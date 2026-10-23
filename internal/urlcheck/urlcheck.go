@@ -104,10 +104,15 @@ func isHost(host, hostname string) bool {
 }
 
 // isHostName reports whether name is dot-separated labels of ASCII letters, digits, hyphens and
-// underscores, as in a DNS name.
+// underscores, as in a DNS name. The last label can't be all digits (RFC 3696 §2): browsers read
+// names such as 0.0 or 127.1 as IPv4 addresses.
 func isHostName(name string) bool {
 	name = strings.TrimSuffix(name, ".")
 	if name == "" || len(name) > 253 {
+		return false
+	}
+
+	if last := name[strings.LastIndex(name, ".")+1:]; isDigits(last) {
 		return false
 	}
 
