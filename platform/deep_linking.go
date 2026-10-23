@@ -231,7 +231,7 @@ func parseContentItems(raw []json.RawMessage, settings lti.DeepLinkingSettings) 
 		// Go matches JSON keys case-insensitively, so {"url":a,"URL":b} would validate one and keep the
 		// other in Raw. Refuse keys that collide instead.
 		if err := checkKeys(r); err != nil {
-			return nil, reject("deep linking response has a content item with duplicate or case-colliding keys", err)
+			return nil, reject("deep linking response has a content item with duplicate or miscased keys", err)
 		}
 
 		var item lti.ContentItem
@@ -350,18 +350,41 @@ func itemURLs(item lti.ContentItem) []string {
 	return urls
 }
 
-// checkKeys refuses a JSON value with an object that repeats a key, or, for the objects Go decodes
-// into structs (the item and its icon, thumbnail, window, iframe and embed), has two keys that
-// differ only in case.
+// checkKeys refuses a JSON value with an object that repeats a key, or, in the objects Go decodes
+// into structs (the item and its icon, thumbnail, window, iframe and embed), a key that differs
+// only in case from another key or from a field the struct models. Go matches keys regardless of
+// case, so either would let Raw disagree with what was checked.
 func checkKeys(raw json.RawMessage) error {
 	dec := json.NewDecoder(bytes.NewReader(raw))
 
-	return walkKeys(dec, true)
+	return walkKeys(dec, itemFields)
 }
 
-var foldedMembers = map[string]bool{"icon": true, "thumbnail": true, "window": true, "iframe": true, "embed": true}
+// Fields of the structs a content item decodes into, by the member that holds them.
+var (
+	itemFields   = fieldSet("type", "title", "text", "url", "icon", "thumbnail", "window", "iframe", "custom", "mediaType", "html", "embed", "lineItem")
+	memberFields = map[string]map[string]string{
+		"icon":      fieldSet("url", "width", "height"),
+		"thumbnail": fieldSet("url", "width", "height"),
+		"window":    fieldSet("targetName", "width", "height", "windowFeatures"),
+		"iframe":    fieldSet("src", "width", "height"),
+		"embed":     fieldSet("html"),
+	}
+)
 
-func walkKeys(dec *json.Decoder, fold bool) error {
+// fieldSet maps each field's lowercased name to its spelling.
+func fieldSet(fields ...string) map[string]string {
+	set := make(map[string]string, len(fields))
+	for _, field := range fields {
+		set[strings.ToLower(field)] = field
+	}
+
+	return set
+}
+
+// walkKeys checks the next JSON value. fields is the struct the value decodes into, or nil when it
+// isn't decoded case-insensitively.
+func walkKeys(dec *json.Decoder, fields map[string]string) error {
 	token, err := dec.Token()
 	if err != nil {
 		return err
@@ -375,7 +398,7 @@ func walkKeys(dec *json.Decoder, fold bool) error {
 	switch delim {
 	case '[':
 		for dec.More() {
-			if err := walkKeys(dec, false); err != nil {
+			if err := walkKeys(dec, nil); err != nil {
 				return err
 			}
 		}
@@ -394,8 +417,12 @@ func walkKeys(dec *json.Decoder, fold bool) error {
 			}
 
 			seenKey := key
-			if fold {
+			if fields != nil {
 				seenKey = strings.ToLower(key)
+
+				if field, known := fields[seenKey]; known && field != key {
+					return fmt.Errorf("lti: key %q should be %q", key, field)
+				}
 			}
 
 			if seen[seenKey] {
@@ -404,7 +431,12 @@ func walkKeys(dec *json.Decoder, fold bool) error {
 
 			seen[seenKey] = true
 
-			if err := walkKeys(dec, fold && foldedMembers[strings.ToLower(key)]); err != nil {
+			var nested map[string]string
+			if fields != nil {
+				nested = memberFields[key]
+			}
+
+			if err := walkKeys(dec, nested); err != nil {
 				return err
 			}
 		}

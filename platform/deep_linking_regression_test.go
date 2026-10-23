@@ -173,14 +173,17 @@ func TestRegression_ContentItemKeysMustNotCollide(t *testing.T) {
 	setup := createTestDeepLinkingSetup(t)
 
 	for name, item := range map[string]string{
-		"url in two cases":           `{"type":"link","url":"https://evil.example.net/phish","URL":"https://tool.example.com/ok"}`,
-		"thumbnail url in two cases": `{"type":"link","url":"https://a.example.com/","thumbnail":{"url":"https://evil.example.net/t.png","URL":"https://a.example.com/t.png"}}`,
-		"type in two cases":          `{"type":"link","Type":"html","url":"https://a.example.com/","html":"<b>x</b>"}`,
-		"a duplicate url":            `{"type":"link","url":"https://a.example.com/","url":"https://evil.example.net/"}`,
-		"a duplicate custom key":     `{"type":"ltiResourceLink","custom":{"a":"1","a":"2"}}`,
+		"url in two cases":               `{"type":"link","url":"https://evil.example.net/phish","URL":"https://tool.example.com/ok"}`,
+		"thumbnail url in two cases":     `{"type":"link","url":"https://a.example.com/","thumbnail":{"url":"https://evil.example.net/t.png","URL":"https://a.example.com/t.png"}}`,
+		"type in two cases":              `{"type":"link","Type":"html","url":"https://a.example.com/","html":"<b>x</b>"}`,
+		"a duplicate url":                `{"type":"link","url":"https://a.example.com/","url":"https://evil.example.net/"}`,
+		"a duplicate custom key":         `{"type":"ltiResourceLink","custom":{"a":"1","a":"2"}}`,
+		"type in the wrong case alone":   `{"Type":"ltiResourceLink"}`,
+		"url in the wrong case alone":    `{"type":"link","URL":"https://a.example.com/"}`,
+		"a nested key in the wrong case": `{"type":"link","url":"https://a.example.com/","iframe":{"Src":"https://a.example.com/e"}}`,
 	} {
 		_, err := verifyItems(t, setup, item)
-		requireRejection(t, err, "duplicate or case-colliding keys")
+		requireRejection(t, err, "duplicate or miscased keys")
 		assert.Zero(t, setup.nonces.Len(), name)
 	}
 
