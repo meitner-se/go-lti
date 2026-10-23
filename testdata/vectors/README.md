@@ -5,9 +5,11 @@ another language can run the same cases. Each file is one case with a `descripti
 
 ## `jwks/`
 
-`jwks` is a JSON Web Key Set as a tool publishes it. A valid case lists the `kids` of the RS256
-signing keys that must be kept, in order; every other key must be skipped. An invalid case must be
-rejected as a whole.
+`jwks` is a JSON Web Key Set as a tool publishes it. A valid case lists the `kids` of the usable
+RS256 signing keys, in order. Every other key must be skipped, as RFC 7517 §5 asks: other types and
+algorithms, encryption keys, and RS256 keys that are malformed, padded (base64url has no padding,
+RFC 7515 §2), outside 2048 to 4096 bits, or have an invalid exponent. An invalid case is a set with
+no usable key.
 
 ## `registration/`
 

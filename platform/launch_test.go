@@ -91,6 +91,15 @@ func createTestLauncher(t *testing.T, key lti.SigningKey) *Launcher {
 	return launcher
 }
 
+func newTestFetcher(t *testing.T, client *http.Client) *jwks.Fetcher {
+	t.Helper()
+
+	fetcher, err := jwks.NewFetcher(jwks.WithHTTPClient(client))
+	require.NoError(t, err)
+
+	return fetcher
+}
+
 func claimsJSON(t *testing.T, claims map[string]any) string {
 	t.Helper()
 
@@ -426,7 +435,7 @@ func TestLauncher_IDToken_VerifiesAgainstThePublishedJWKS(t *testing.T) {
 	require.NoError(t, err)
 
 	// Verify as a tool would: fetch the platform's JWKS and check the token against it.
-	fetcher := jwks.NewFetcher(jwks.WithHTTPClient(server.Client()))
+	fetcher := newTestFetcher(t, server.Client())
 	claims := jwt.MapClaims{}
 	token, err := jwt.ParseWithClaims(idToken, claims, func(token *jwt.Token) (any, error) {
 		kid, _ := token.Header["kid"].(string)
@@ -455,7 +464,7 @@ func TestLauncher_IDToken_DoesNotVerifyAgainstAnotherKey(t *testing.T) {
 	idToken, err := launcher.idToken(t.Context(), createTestTool(), "nonce-1", createTestResourceLinkRequest())
 	require.NoError(t, err)
 
-	fetcher := jwks.NewFetcher(jwks.WithHTTPClient(server.Client()))
+	fetcher := newTestFetcher(t, server.Client())
 	_, err = jwt.Parse(idToken, func(token *jwt.Token) (any, error) {
 		kid, _ := token.Header["kid"].(string)
 

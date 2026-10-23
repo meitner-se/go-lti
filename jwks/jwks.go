@@ -20,10 +20,13 @@ const (
 
 	// MinRSABits is the smallest RSA modulus accepted. RFC 7518 §3.3 requires 2048 bits for RS256.
 	MinRSABits = 2048
+	// MaxRSABits is the largest RSA modulus accepted. Verifying with a key costs time that grows with
+	// the square of its size, so a tool must not be able to publish one large enough to stall us.
+	MaxRSABits = 4096
 )
 
-// ErrNoSigningKeys is returned, wrapped, by ParseSet when a set has no usable RS256 signing key.
-var ErrNoSigningKeys = errors.New("jwks: no rs256 signing keys")
+// ErrNoSigningKeys is returned by ParseSet when a set has no usable RS256 signing key.
+var ErrNoSigningKeys = errors.New("jwks: no usable rs256 signing keys")
 
 // Key is an RSA public signing key and the kid that JWT headers refer to it by.
 type Key struct {
@@ -63,12 +66,14 @@ func NewSet(keys ...Key) Set {
 	return set
 }
 
-// ParseSet decodes a JWKS document and returns its RS256 signing keys.
+// ParseSet decodes a JWKS document and returns its usable RS256 signing keys.
 //
-// Keys of other types, encryption keys and keys declared for other algorithms are skipped, so a
-// tool can publish them alongside its RS256 keys. A Key carries no algorithm, so only RS256 keys
-// may pass: a key declared for RS512 must not verify an RS256 token. It fails when no usable key
-// remains, or when an RS256 key is malformed or shorter than 2048 bits.
+// Keys it can't use are skipped, as RFC 7517 §5 asks: other key types, encryption keys, keys
+// declared for other algorithms, and RS256 keys that are malformed, outside 2048 to 4096 bits, or
+// have an invalid exponent. A Key carries no algorithm, so only RS256 keys may pass: a key declared
+// for RS512 must not verify an RS256 token. Members must be base64url without padding (RFC 7515
+// §2), so a padded n or e makes its key unusable. ParseSet fails when the document isn't a JWK set
+// or no usable key remains.
 func ParseSet(data []byte) ([]Key, error) {
 	var set Set
 	if err := json.Unmarshal(data, &set); err != nil {
@@ -83,7 +88,7 @@ func ParseSet(data []byte) ([]Key, error) {
 
 		publicKey, err := jwk.rsaPublicKey()
 		if err != nil {
-			return nil, err
+			continue
 		}
 
 		keys = append(keys, Key{ID: jwk.Kid, PublicKey: publicKey})
@@ -120,8 +125,8 @@ func (j JWK) rsaPublicKey() (*rsa.PublicKey, error) {
 	}
 
 	modulus := new(big.Int).SetBytes(n)
-	if modulus.BitLen() < MinRSABits {
-		return nil, errors.New("jwks: rsa modulus is shorter than 2048 bits")
+	if modulus.BitLen() < MinRSABits || modulus.BitLen() > MaxRSABits {
+		return nil, errors.New("jwks: rsa modulus is not between 2048 and 4096 bits")
 	}
 
 	exponent := new(big.Int).SetBytes(e)

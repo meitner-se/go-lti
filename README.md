@@ -45,7 +45,8 @@ cfg := platform.Config{
 Verify a tool's Deep Linking response:
 
 ```go
-verifier, err := platform.NewDeepLinkingVerifier(cfg, jwks.NewFetcher(), nonces)
+fetcher, err := jwks.NewFetcher()
+verifier, err := platform.NewDeepLinkingVerifier(cfg, fetcher, nonces)
 
 response, err := verifier.Verify(ctx, r.PostFormValue(lti.DeepLinkingResponseField), platform.DeepLinkingSession{
 	Tool:         tool,

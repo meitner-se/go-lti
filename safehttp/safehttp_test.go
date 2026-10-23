@@ -2,6 +2,7 @@ package safehttp
 
 import (
 	"context"
+	"crypto/tls"
 	"crypto/x509"
 	"net/http"
 	"net/http/httptest"
@@ -94,6 +95,21 @@ func TestIsPublicAddr(t *testing.T) {
 		{addr: "::ffff:10.0.0.1", public: false},
 		{addr: "64:ff9b::a00:1", public: false},
 		{addr: "2002:a00:1::", public: false},
+		{addr: "0.1.2.3", public: false},
+		{addr: "240.0.0.1", public: false},
+		{addr: "192.88.99.1", public: false},
+		{addr: "::ffff:100.64.0.1", public: false},
+		{addr: "::ffff:93.184.215.14", public: true},
+		{addr: "fec0::1", public: false},
+		{addr: "::7f00:1", public: false},
+		{addr: "::a00:1", public: false},
+		{addr: "::ffff:0:7f00:1", public: false},
+		{addr: "2001::1", public: false},
+		{addr: "2001:10::1", public: false},
+		{addr: "2001:2::1", public: false},
+		{addr: "5f00::1", public: false},
+		{addr: "3fff::1", public: false},
+		{addr: "2a00:1450:4001:830::200e", public: true},
 	}
 
 	for _, tt := range tests {
@@ -240,4 +256,39 @@ func TestCheckURL(t *testing.T) {
 			require.ErrorIs(t, err, ErrNotHTTPS)
 		})
 	}
+}
+
+func TestNewClient_FollowsExactlyThreeRedirects(t *testing.T) {
+	t.Parallel()
+
+	var server *httptest.Server
+	server = httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hops := len(r.URL.Path) - 1
+		if hops < 3 || r.URL.Query().Get("stop") == "" {
+			http.Redirect(w, r, server.URL+r.URL.Path+"x?"+r.URL.RawQuery, http.StatusFound)
+
+			return
+		}
+
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(server.Close)
+
+	// /?stop=1 redirects to /x, /xx and /xxx, then answers: three redirects.
+	require.NoError(t, get(t.Context(), createTestClient(t, server), server.URL+"/?stop=1"))
+
+	// Without stop the chain never ends, and the fourth redirect is refused.
+	require.ErrorIs(t, get(t.Context(), createTestClient(t, server), server.URL+"/"), ErrTooManyRedirects)
+}
+
+func TestNewClient_Configuration(t *testing.T) {
+	t.Parallel()
+
+	client := NewClient(7 * time.Second)
+	assert.Equal(t, 7*time.Second, client.Timeout)
+
+	transport, ok := client.Transport.(*http.Transport)
+	require.True(t, ok)
+	assert.Nil(t, transport.Proxy, "a proxy would hide the destination from the dial check")
+	assert.Equal(t, uint16(tls.VersionTLS12), transport.TLSClientConfig.MinVersion)
 }

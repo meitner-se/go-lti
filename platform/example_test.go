@@ -84,7 +84,12 @@ func ExampleConfig_OpenIDConfiguration() {
 
 // A tool posts its Deep Linking response to the platform's return URL.
 func Example_deepLinking() {
-	verifier, err := platform.NewDeepLinkingVerifier(exampleConfig, jwks.NewFetcher(), exampleNonceStore{})
+	fetcher, err := jwks.NewFetcher()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	verifier, err := platform.NewDeepLinkingVerifier(exampleConfig, fetcher, exampleNonceStore{})
 	if err != nil {
 		log.Fatal(err)
 	}

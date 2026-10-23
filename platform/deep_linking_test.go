@@ -569,7 +569,7 @@ func TestDeepLinkingVerifier_Verify_FetchesTheToolsJWKS(t *testing.T) {
 
 	verifier, err := NewDeepLinkingVerifier(
 		createTestConfig(),
-		jwks.NewFetcher(jwks.WithHTTPClient(server.Client())),
+		newTestFetcher(t, server.Client()),
 		ltitest.NewNonceStore(),
 		WithClock(func() time.Time { return now }),
 	)

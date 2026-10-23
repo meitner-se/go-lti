@@ -12,7 +12,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/meitner-se/go-lti"
-	"github.com/meitner-se/go-lti/jwks"
 	"github.com/meitner-se/go-lti/ltitest"
 )
 
@@ -108,7 +107,7 @@ func TestDeepLinkingVerifier_Verify_Vectors(t *testing.T) {
 	tool := ltitest.NewSigningKey(t)
 	server := ltitest.NewJWKSServer(t, tool)
 	now := time.Now()
-	fetcher := jwks.NewFetcher(jwks.WithHTTPClient(server.Client()))
+	fetcher := newTestFetcher(t, server.Client())
 
 	for name, v := range loadVectors[deepLinkingVector](t, "deep_linking") {
 		t.Run(name, func(t *testing.T) {
