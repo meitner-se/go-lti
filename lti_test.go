@@ -117,8 +117,11 @@ func TestRegression_StaticKeysValidatesPublishedKeys(t *testing.T) {
 	short, err := rsa.GenerateKey(rand.Reader, 1024)
 	require.NoError(t, err)
 
+	noKid := ltitest.PublicKey(t, ltitest.NewSigningKey(t))
+	noKid.ID = ""
+
 	for name, key := range map[string]jwks.Key{
-		"no kid":           {PublicKey: &short.PublicKey},
+		"no kid":           noKid,
 		"no public key":    {ID: "next"},
 		"a key under 2048": {ID: "next", PublicKey: &short.PublicKey},
 		"an empty rsa key": {ID: "next", PublicKey: &rsa.PublicKey{}},

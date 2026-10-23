@@ -81,6 +81,7 @@ func TestRegression_KeySizeAndExponentBounds(t *testing.T) {
 		{name: "exponent 3", key: createTestModulusJWK(t, "k", 2048, big.NewInt(3)), usable: true},
 		{name: "exponent 2^31+1", key: createTestModulusJWK(t, "k", 2048, big.NewInt(1<<31+1)), usable: false},
 		{name: "exponent 2^31-1", key: createTestModulusJWK(t, "k", 2048, big.NewInt(1<<31-1)), usable: true},
+		{name: "exponent 2^64+65537", key: createTestModulusJWK(t, "k", 2048, new(big.Int).Add(new(big.Int).Lsh(big.NewInt(1), 64), big.NewInt(65537))), usable: false},
 		{name: "exponent beyond int64", key: createTestModulusJWK(t, "k", 2048, new(big.Int).Add(new(big.Int).Lsh(big.NewInt(1), 70), big.NewInt(1))), usable: false},
 	}
 
@@ -118,7 +119,15 @@ func TestRegression_UnusableKeysAreSkippedNextToAGoodOne(t *testing.T) {
 	huge := createTestModulusJWK(t, "huge", 8192, big.NewInt(65537))
 	evenE := createTestModulusJWK(t, "even", 2048, big.NewInt(65536))
 
-	keys, err := ParseSet(createTestSetJSON(t, malformed, padded, short, huge, evenE, good))
+	// 3072 bits is 512 base64 characters exactly, so the decoder returns the whole modulus with its error.
+	trailing := createTestModulusJWK(t, "trailing", 3072, big.NewInt(65537))
+	trailing.N += "!!!!"
+
+	notRSA := good
+	notRSA.Kid = "not-rsa"
+	notRSA.Kty = "oct"
+
+	keys, err := ParseSet(createTestSetJSON(t, malformed, padded, short, huge, evenE, trailing, notRSA, good))
 	require.NoError(t, err)
 
 	require.Len(t, keys, 1)
@@ -242,6 +251,31 @@ func TestRegression_FetcherRefusesAPlainHTTPURL(t *testing.T) {
 
 	_, err = fetcher.Key(t.Context(), server.URL, "kid-1")
 	require.ErrorIs(t, err, safehttp.ErrNotHTTPS, "the url is checked even when the client would connect")
+}
+
+func TestRegression_FetcherStopsReadingAnOversizedSet(t *testing.T) {
+	t.Parallel()
+
+	release := make(chan struct{})
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, err := w.Write(make([]byte, MaxBytes+1))
+		assert.NoError(t, err)
+
+		// The body never ends, so only a capped read returns.
+		w.(http.Flusher).Flush()
+		<-release
+	}))
+	t.Cleanup(server.Close)
+	t.Cleanup(func() { close(release) })
+
+	fetcher, err := NewFetcher(WithHTTPClient(server.Client()))
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+
+	_, err = fetcher.Key(ctx, server.URL, "kid-1")
+	require.ErrorContains(t, err, "larger than 1 MiB")
 }
 
 func TestRegression_NewFetcherValidatesOptions(t *testing.T) {

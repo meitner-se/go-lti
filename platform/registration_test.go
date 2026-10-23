@@ -108,6 +108,16 @@ func TestRegistration_Tool(t *testing.T) {
 	}, parseTestRegistration(t).Tool("client-1"))
 }
 
+func TestRegistration_ToolDoesNotShareTheRegistrationsSlices(t *testing.T) {
+	t.Parallel()
+
+	reg := parseTestRegistration(t)
+	tool := reg.Tool("client-1")
+	tool.RedirectURIs[0] = "https://evil.example.org/callback"
+
+	assert.Equal(t, "https://client.example.org/callback", reg.RedirectURIs[0])
+}
+
 func TestParseRegistration_ParsesTheSpecExample(t *testing.T) {
 	t.Parallel()
 
@@ -251,6 +261,7 @@ func TestParseRegistration_Rejects(t *testing.T) {
 		{name: "no domain", change: func(b map[string]any) { delete(toolConfiguration(b), "domain") }, message: badDomain},
 		{name: "a domain with the protocol", change: func(b map[string]any) { toolConfiguration(b)["domain"] = "https://client.example.org" }, message: badDomain},
 		{name: "a domain with a path", change: func(b map[string]any) { toolConfiguration(b)["domain"] = "client.example.org/lti" }, message: badDomain},
+		{name: "a domain ending in a colon", change: func(b map[string]any) { toolConfiguration(b)["domain"] = "client.example.org:" }, message: badDomain},
 		{name: "a wildcard domain", change: func(b map[string]any) { toolConfiguration(b)["domain"] = "*.example.org" }, message: badDomain},
 		{name: "a non-ascii domain", change: func(b map[string]any) { toolConfiguration(b)["domain"] = "bücher.example.org" }, message: badDomain},
 		{name: "a secondary domain with the protocol", change: func(b map[string]any) {

@@ -244,6 +244,7 @@ func TestRegression_ItemsCarryWhatTheSpecRequires(t *testing.T) {
 		"a line item without a maximum":   {item: `{"type":"ltiResourceLink","lineItem":{"label":"Quiz"}}`, message: "positive scoreMaximum"},
 		"a line item with a zero maximum": {item: `{"type":"ltiResourceLink","lineItem":{"scoreMaximum":0}}`, message: "positive scoreMaximum"},
 		"a fractional width":              {item: `{"type":"link","url":"https://a.example.com/","iframe":{"src":"https://a.example.com/e","width":100.5}}`, message: "malformed content item"},
+		"a width beyond an int32":         {item: `{"type":"link","url":"https://a.example.com/","window":{"width":1e10}}`, message: "malformed content item"},
 		"a width as a string":             {item: `{"type":"link","url":"https://a.example.com/","window":{"width":"100"}}`, message: "malformed content item"},
 	}
 
