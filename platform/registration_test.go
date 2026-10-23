@@ -129,11 +129,13 @@ func TestParseRegistration_NormalisesDomains(t *testing.T) {
 
 	body := createTestRegistrationJSON()
 	toolConfiguration(body)["domain"] = "Client.Example.ORG"
+	toolConfiguration(body)["secondary_domains"] = []string{"CDN.Example.com."}
 
 	req, err := ParseRegistration(encodeRegistration(t, body))
 	require.NoError(t, err)
 
 	assert.Equal(t, "client.example.org", req.ToolConfiguration.Domain)
+	assert.Equal(t, []string{"cdn.example.com"}, req.ToolConfiguration.SecondaryDomains)
 }
 
 func TestParseRegistration_KeepsTheToolsMetadata(t *testing.T) {
