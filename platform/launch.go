@@ -103,11 +103,12 @@ func (l *Launcher) idToken(ctx context.Context, tool Tool, nonce string, msg lti
 		return "", fmt.Errorf("lti: cannot get signing key: %w", err)
 	}
 
-	if _, err := key.PublicKey(); err != nil {
+	public, err := key.PublicKey()
+	if err != nil {
 		return "", err
 	}
 
-	token, err := jose.SignRS256(key.ID, key.Signer, claims)
+	token, err := jose.SignRS256(public.ID, key.Signer, claims)
 	if err != nil {
 		return "", fmt.Errorf("lti: cannot sign id_token: %w", err)
 	}

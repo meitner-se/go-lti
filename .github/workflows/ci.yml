@@ -59,6 +59,7 @@ jobs:
           - { package: ./jwks, target: FuzzParseSet }
           - { package: ./platform, target: FuzzParseRegistration }
           - { package: ./platform, target: FuzzContentItems }
+          - { package: ./platform, target: FuzzParseAuthenticationRequest }
           - { package: ./platform, target: FuzzVerify }
           - { package: ./internal/urlcheck, target: FuzzOnDomains }
     steps:

@@ -1,8 +1,12 @@
 package lti_test
 
 import (
+	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/x509"
+	"encoding/pem"
 	"errors"
 	"net/http"
 	"testing"
@@ -60,19 +64,162 @@ func TestStaticKeys(t *testing.T) {
 	assert.Equal(t, next.ID, public[1].ID)
 }
 
+func TestStaticKeys_KidDefaultsToTheThumbprint(t *testing.T) {
+	t.Parallel()
+
+	key := ltitest.NewSigningKey(t)
+	key.ID = ""
+
+	keys, err := lti.StaticKeys(key)
+	require.NoError(t, err)
+
+	signing, err := keys.SigningKey(t.Context())
+	require.NoError(t, err)
+
+	public, err := keys.PublicKeys(t.Context())
+	require.NoError(t, err)
+
+	rsaKey, ok := key.Signer.Public().(*rsa.PublicKey)
+	require.True(t, ok)
+	assert.Equal(t, jwks.Thumbprint(rsaKey), signing.ID)
+	assert.Equal(t, signing.ID, public[0].ID)
+}
+
+func TestParseRSAPrivateKeyPEM(t *testing.T) {
+	t.Parallel()
+
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	require.NoError(t, err)
+
+	pkcs8, err := x509.MarshalPKCS8PrivateKey(key)
+	require.NoError(t, err)
+
+	for name, block := range map[string]*pem.Block{
+		"pkcs #1": {Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(key)},
+		"pkcs #8": {Type: "PRIVATE KEY", Bytes: pkcs8},
+	} {
+		parsed, err := lti.ParseRSAPrivateKeyPEM(pem.EncodeToMemory(block))
+		require.NoError(t, err, name)
+		assert.True(t, key.Equal(parsed), name)
+	}
+}
+
+func TestParseRSAPrivateKeyPEM_Rejects(t *testing.T) {
+	t.Parallel()
+
+	short, err := rsa.GenerateKey(rand.Reader, 1024)
+	require.NoError(t, err)
+
+	ec, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	require.NoError(t, err)
+
+	ecPKCS8, err := x509.MarshalPKCS8PrivateKey(ec)
+	require.NoError(t, err)
+
+	valid, err := rsa.GenerateKey(rand.Reader, 2048)
+	require.NoError(t, err)
+
+	validPEM := pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(valid)})
+
+	tests := map[string][]byte{
+		"empty":                 nil,
+		"not pem":               []byte("not a key"),
+		"a key under 2048 bits": pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(short)}),
+		"an ec key":             pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: ecPKCS8}),
+		"a public key":          pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: []byte{1, 2, 3}}),
+		"an encrypted key":      pem.EncodeToMemory(&pem.Block{Type: "ENCRYPTED PRIVATE KEY", Bytes: []byte{1, 2, 3}}),
+		"two keys":              append(append([]byte{}, validPEM...), validPEM...),
+		"a corrupt key":         pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: []byte{1, 2, 3}}),
+	}
+
+	for name, data := range tests {
+		_, err := lti.ParseRSAPrivateKeyPEM(data)
+		require.Error(t, err, name)
+	}
+}
+
+func TestSubstitute(t *testing.T) {
+	t.Parallel()
+
+	got := lti.Substitute(map[string]string{
+		"context":   "$Context.id",
+		"user":      "$User.id",
+		"unknown":   "$Context.id.history",
+		"embedded":  "course $Context.id",
+		"literal":   "BIO1",
+		"dollar":    "$",
+		"unoffered": "$ResourceLink.title",
+	}, map[lti.Variable]string{
+		lti.VariableContextID: "course-1",
+		lti.VariableUserID:    "user-1",
+	}, lti.Sharing{})
+
+	assert.Equal(t, map[string]string{
+		"context":   "course-1",
+		"user":      "user-1",
+		"unknown":   "$Context.id.history",
+		"embedded":  "course $Context.id",
+		"literal":   "BIO1",
+		"dollar":    "$",
+		"unoffered": "$ResourceLink.title",
+	}, got)
+
+	assert.Nil(t, lti.Substitute(nil, nil, lti.Sharing{}))
+}
+
+func TestRegression_SubstituteKeepsPersonalDataUnlessShared(t *testing.T) {
+	t.Parallel()
+
+	custom := map[string]string{
+		"email":    "$Person.email.primary",
+		"name":     "$Person.name.full",
+		"username": "$User.username",
+		"phone":    "$Person.phone.mobile",
+		"course":   "$Context.id",
+	}
+	values := map[lti.Variable]string{
+		lti.VariablePersonEmailPrimary: "student@school.example",
+		lti.VariablePersonNameFull:     "Ada Lovelace",
+		lti.VariableUserUsername:       "ada",
+		"Person.phone.mobile":          "+46700000000",
+		lti.VariableContextID:          "course-1",
+	}
+
+	assert.Equal(t, map[string]string{
+		"email":    "$Person.email.primary",
+		"name":     "$Person.name.full",
+		"username": "$User.username",
+		"phone":    "$Person.phone.mobile",
+		"course":   "course-1",
+	}, lti.Substitute(custom, values, lti.Sharing{}), "nothing about the user is shared by default")
+
+	assert.Equal(t, map[string]string{
+		"email":    "$Person.email.primary",
+		"name":     "Ada Lovelace",
+		"username": "ada",
+		"phone":    "$Person.phone.mobile",
+		"course":   "course-1",
+	}, lti.Substitute(custom, values, lti.Sharing{Name: true}))
+
+	assert.Equal(t, map[string]string{
+		"email":    "student@school.example",
+		"name":     "Ada Lovelace",
+		"username": "ada",
+		"phone":    "$Person.phone.mobile",
+		"course":   "course-1",
+	}, lti.Substitute(custom, values, lti.Sharing{Name: true, Email: true}), "other personal data has no sharing setting, so it is never replaced")
+}
+
 func TestStaticKeys_Rejects(t *testing.T) {
 	t.Parallel()
 
 	short, err := rsa.GenerateKey(rand.Reader, 1024)
 	require.NoError(t, err)
 
-	valid := ltitest.NewSigningKey(t)
-
 	tests := []struct {
 		name string
 		key  lti.SigningKey
 	}{
-		{name: "no kid", key: lti.SigningKey{Signer: valid.Signer}},
 		{name: "no signer", key: lti.SigningKey{ID: "kid"}},
 		{name: "a key under 2048 bits", key: lti.SigningKey{ID: "kid", Signer: short}},
 	}

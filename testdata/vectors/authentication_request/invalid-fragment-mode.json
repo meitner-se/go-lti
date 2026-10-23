@@ -1,0 +1,38 @@
+{
+  "description": "The id_token must be posted, not put in a fragment.",
+  "form": {
+    "scope": [
+      "openid"
+    ],
+    "response_type": [
+      "id_token"
+    ],
+    "response_mode": [
+      "fragment"
+    ],
+    "prompt": [
+      "none"
+    ],
+    "client_id": [
+      "client-1"
+    ],
+    "redirect_uri": [
+      "https://tool.example.com/launch"
+    ],
+    "login_hint": [
+      "user-hint-1"
+    ],
+    "lti_message_hint": [
+      "launch-hint-1"
+    ],
+    "nonce": [
+      "nonce-1"
+    ],
+    "state": [
+      "state-1"
+    ]
+  },
+  "valid": false,
+  "error_code": "invalid_request",
+  "error_description": "response_mode must be form_post"
+}

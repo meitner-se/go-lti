@@ -3,6 +3,7 @@ package platform
 import (
 	"encoding/json"
 	"io/fs"
+	"net/url"
 	"os"
 	"path/filepath"
 	"testing"
@@ -166,6 +167,37 @@ func TestDeepLinkingVerifier_Verify_Vectors(t *testing.T) {
 
 			require.NoError(t, err, v.Description)
 			assert.Len(t, response.Items, v.Items)
+		})
+	}
+}
+
+//nolint:tagliatelle // the vector files are shared with other languages and use snake_case
+type authenticationRequestVector struct {
+	Description      string        `json:"description"`
+	Form             url.Values    `json:"form"`
+	Valid            bool          `json:"valid"`
+	ErrorCode        lti.ErrorCode `json:"error_code"`
+	ErrorDescription string        `json:"error_description"`
+}
+
+func TestParseAuthenticationRequest_Vectors(t *testing.T) {
+	t.Parallel()
+
+	for name, v := range loadVectors[authenticationRequestVector](t, "authentication_request") {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := ParseAuthenticationRequest(v.Form)
+			if v.Valid {
+				require.NoError(t, err, v.Description)
+
+				return
+			}
+
+			rejection, ok := lti.AsError(err)
+			require.True(t, ok, v.Description)
+			assert.Equal(t, v.ErrorCode, rejection.Code, v.Description)
+			assert.Contains(t, rejection.Description, v.ErrorDescription, "the vector must fail for its own reason")
 		})
 	}
 }

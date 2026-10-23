@@ -2,7 +2,7 @@
 
 LTI 1.3 and LTI Advantage for Go, for the platform side: the system that launches tools, such as an LMS.
 
-It covers signing the id_token a tool is launched with, verifying Deep Linking 2.0 responses, Dynamic Registration 1.0, and the platform's OpenID configuration and JWKS. LTI 1.1 is not supported.
+It covers the launch (the OIDC third-party login flow and the signed id_token), verifying Deep Linking 2.0 responses, Dynamic Registration 1.0, and the platform's OpenID configuration and JWKS. LTI 1.1 is not supported.
 
 ```sh
 go get github.com/meitner-se/go-lti
@@ -15,7 +15,7 @@ Work in progress: the API may change until v1.0.0.
 | Package | What it does |
 | -- | -- |
 | `lti` | Types both sides of LTI share: messages and claims, content items, roles, scopes and other spec vocabulary, signing keys, and `Error`. |
-| `platform` | The platform side: its `Config`, its record of each `Tool`, id_tokens, Deep Linking verification, Dynamic Registration and the OpenID configuration. |
+| `platform` | The platform side: its `Config`, its record of each `Tool`, the launch flow, Deep Linking verification, Dynamic Registration and the OpenID configuration. |
 | `jwks` | Publishes the platform's keys and fetches tools' keys, with caching. |
 | `safehttp` | An HTTP client that won't connect to private or internal addresses, for URLs a tool controls. |
 | `ltitest` | Test keys, a JWKS server and an in-memory nonce store. |
@@ -41,6 +41,52 @@ cfg := platform.Config{
 	Product: platform.Product{GUID: "lms-1", Name: "Example LMS", FamilyCode: "example-lms", Version: "1.0.0"},
 }
 ```
+
+Launch a tool. The hints are opaque to go-lti: your platform decides what they are and redeems them.
+
+```go
+keys, err := lti.StaticKeys(lti.SigningKey{Signer: privateKey}) // kid defaults to the key's thumbprint
+launcher, err := platform.NewLauncher(cfg, keys)
+
+// 1. Where the user clicks: redirect the browser to the tool.
+initiation := platform.LoginInitiation{DeploymentID: deploymentID, LoginHint: userHint, MessageHint: launchHint}
+loginURL, err := cfg.LoginInitiationURL(tool, initiation)
+
+// 2. At Endpoints.Authorization: the tool's authentication request, from the query for a GET or
+// from r.PostForm (after r.ParseForm) for a POST. r.Form merges both, which counts as repeating
+// any parameter that appears in each.
+req, err := platform.ParseAuthenticationRequest(r.URL.Query())
+if err != nil {
+	if errorForm, ok := launcher.RespondError(req, tool, err); ok {
+		errorForm.ServeHTTP(w, r)
+		return
+	}
+	http.Error(w, "the launch request is invalid", http.StatusBadRequest)
+	return
+}
+
+// 3. Redeem req.MessageHint for the launch and its initiation, check that the logged-in user is the
+// one the login_hint stands for, then answer with the signed id_token.
+form, err := launcher.Respond(ctx, req, platform.Launch{
+	Tool:       tool,
+	Initiation: initiation,
+	Message: &lti.ResourceLinkRequest{
+		Common:       lti.Common{DeploymentID: deploymentID, Subject: sub, Roles: []lti.Role{lti.RoleLearner}},
+		ResourceLink: lti.ResourceLink{ID: linkID},
+	},
+})
+if err != nil {
+	if errorForm, ok := launcher.RespondError(req, tool, err); ok {
+		errorForm.ServeHTTP(w, r)
+	}
+	return
+}
+form.ServeHTTP(w, r) // auto-submits id_token and state to the tool, with a strict CSP
+
+// Serve launcher.JWKS(ctx) at Endpoints.JWKS.
+```
+
+Fill custom parameters with `lti.Substitute(custom, values, sharing)`: variables about the user are only filled in when the tool's sharing allows.
 
 Verify a tool's Deep Linking response:
 
@@ -68,6 +114,10 @@ Load the session from your own state for this browser, such as the record behind
 Handle a Dynamic Registration:
 
 ```go
+// Send the admin's browser to the tool's registration URL.
+startURL, err := cfg.RegistrationInitiationURL(toolRegistrationURL, openIDConfigurationURL, registrationToken)
+
+// At Endpoints.Registration, the tool posts its registration.
 reg, err := platform.ParseRegistration(body)
 review := reg.Review(cfg) // show this to an admin before activating the tool
 tool := reg.Tool(clientID)

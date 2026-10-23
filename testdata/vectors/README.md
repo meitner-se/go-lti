@@ -23,6 +23,12 @@ The spec's own request examples spell the grant `"implict"` and have a trailing 
 `invalid-spec-example.json` is the §3.5.2 example with only the comma removed, and it is refused for
 the typo; `valid-spec-example-with-implicit.json` also corrects the typo.
 
+## `authentication_request/`
+
+`form` is the tool's OIDC authentication request to the authorization endpoint, as form values
+(each a list, since a parameter may be repeated). A valid case must parse; an invalid case has the
+`error_code` to answer with and a substring of its `error_description`.
+
 ## `deep_linking/`
 
 `claims` is the payload of an LtiDeepLinkingResponse, without `iat` and `exp`. Sign it with RS256

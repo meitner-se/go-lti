@@ -25,6 +25,7 @@ const (
 	ErrorInvalidClientMetadata   ErrorCode = "invalid_client_metadata"
 	ErrorInvalidRedirectURI      ErrorCode = "invalid_redirect_uri"
 	ErrorInvalidToken            ErrorCode = "invalid_token"
+	ErrorServerError             ErrorCode = "server_error"
 )
 
 // Error is a rejection of something a tool or a browser sent. Description is safe to send back.

@@ -1,5 +1,7 @@
 package lti
 
+import "strings"
+
 // MessageType is an LTI message type.
 type MessageType string
 
@@ -123,3 +125,44 @@ const (
 	VariableResourceLinkDescription Variable = "ResourceLink.description"
 	VariableMessageLocale           Variable = "Message.locale"
 )
+
+// Substitute returns custom with each value that is exactly "$<Variable>" replaced by that
+// variable's value in values (LTI 1.3 §5.4.6, Appendix B). Values that name a variable missing from
+// values, or that only contain one, stay as they are, as the spec requires for variables the
+// platform doesn't support; put a supported variable that has no value in values as "".
+//
+// Variables about the user are only replaced when sharing allows: Person.name.* and User.username
+// need Name, Person.email.* needs Email, and the other Person.* variables are never replaced, since
+// Sharing has no setting for them.
+func Substitute(custom map[string]string, values map[Variable]string, sharing Sharing) map[string]string {
+	if custom == nil {
+		return nil
+	}
+
+	out := make(map[string]string, len(custom))
+	for name, value := range custom {
+		if variable, ok := strings.CutPrefix(value, "$"); ok && sharing.allows(Variable(variable)) {
+			if substituted, ok := values[Variable(variable)]; ok {
+				value = substituted
+			}
+		}
+
+		out[name] = value
+	}
+
+	return out
+}
+
+// allows reports whether sharing lets variable be replaced.
+func (s Sharing) allows(variable Variable) bool {
+	switch {
+	case strings.HasPrefix(string(variable), "Person.name.") || variable == VariableUserUsername:
+		return s.Name
+	case strings.HasPrefix(string(variable), "Person.email."):
+		return s.Email
+	case strings.HasPrefix(string(variable), "Person."):
+		return false
+	default:
+		return true
+	}
+}

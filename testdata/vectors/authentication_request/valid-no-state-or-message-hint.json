@@ -1,0 +1,30 @@
+{
+  "description": "state and lti_message_hint are optional.",
+  "form": {
+    "scope": [
+      "openid"
+    ],
+    "response_type": [
+      "id_token"
+    ],
+    "response_mode": [
+      "form_post"
+    ],
+    "prompt": [
+      "none"
+    ],
+    "client_id": [
+      "client-1"
+    ],
+    "redirect_uri": [
+      "https://tool.example.com/launch"
+    ],
+    "login_hint": [
+      "user-hint-1"
+    ],
+    "nonce": [
+      "nonce-1"
+    ]
+  },
+  "valid": true
+}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rsa"
 	"encoding/json"
+	"net/url"
 	"slices"
 	"strings"
 	"testing"
@@ -194,6 +195,56 @@ func FuzzVerify(f *testing.F) {
 			t.Fatalf("accepted a lifetime of %d s", exp-iat)
 		case exp < -60 || iat > 60:
 			t.Fatalf("accepted iat %+d s and exp %+d s from now", iat, exp)
+		}
+	})
+}
+
+func FuzzParseAuthenticationRequest(f *testing.F) {
+	for _, v := range loadVectors[authenticationRequestVector](f, "authentication_request") {
+		f.Add(v.Form.Encode())
+	}
+
+	f.Add("client_id=&redirect_uri=&nonce=")
+	f.Add("scope=openid%20openid&response_type=id_token&response_type=id_token")
+
+	f.Fuzz(func(t *testing.T, query string) {
+		form, err := url.ParseQuery(query)
+		if err != nil {
+			return
+		}
+
+		req, err := ParseAuthenticationRequest(form)
+		if req == nil {
+			t.Fatal("ParseAuthenticationRequest returned no request")
+		}
+
+		if err != nil {
+			if _, ok := lti.AsError(err); !ok {
+				t.Fatalf("ParseAuthenticationRequest returned a non-lti error: %v", err)
+			}
+
+			return
+		}
+
+		for name, value := range map[string]string{"client_id": req.ClientID, "redirect_uri": req.RedirectURI, "login_hint": req.LoginHint, "nonce": req.Nonce} {
+			if value == "" || len(value) > maxAuthenticationParameterBytes {
+				t.Fatalf("accepted %s %q", name, value)
+			}
+		}
+
+		for name, values := range form {
+			if len(values) != 1 {
+				t.Fatalf("accepted repeated %s", name)
+			}
+		}
+
+		openid := false
+		for _, scope := range strings.Fields(form.Get("scope")) {
+			openid = openid || scope == "openid"
+		}
+
+		if !openid || form.Get("response_type") != "id_token" || form.Get("response_mode") != "form_post" || form.Get("prompt") != "none" {
+			t.Fatalf("accepted a request that isn't an LTI authentication request: %v", form)
 		}
 	})
 }

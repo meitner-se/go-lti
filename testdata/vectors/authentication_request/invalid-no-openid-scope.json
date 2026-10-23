@@ -1,0 +1,38 @@
+{
+  "description": "scope must include openid.",
+  "form": {
+    "scope": [
+      "profile"
+    ],
+    "response_type": [
+      "id_token"
+    ],
+    "response_mode": [
+      "form_post"
+    ],
+    "prompt": [
+      "none"
+    ],
+    "client_id": [
+      "client-1"
+    ],
+    "redirect_uri": [
+      "https://tool.example.com/launch"
+    ],
+    "login_hint": [
+      "user-hint-1"
+    ],
+    "lti_message_hint": [
+      "launch-hint-1"
+    ],
+    "nonce": [
+      "nonce-1"
+    ],
+    "state": [
+      "state-1"
+    ]
+  },
+  "valid": false,
+  "error_code": "invalid_scope",
+  "error_description": "scope must include openid"
+}
