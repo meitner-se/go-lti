@@ -51,5 +51,6 @@
   "iat_offset_seconds": null,
   "exp_offset_seconds": 300,
   "valid": false,
-  "error_code": "invalid_request"
+  "error_code": "invalid_request",
+  "error_description": "has no iat"
 }

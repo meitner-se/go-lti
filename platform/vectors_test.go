@@ -41,12 +41,16 @@ type deepLinkingVector struct {
 		AcceptMultiple bool                  `json:"accept_multiple"`
 		Data           string                `json:"data"`
 	} `json:"session"`
+	PlatformIssuer   string         `json:"platform_issuer"`
+	ClientID         string         `json:"client_id"`
+	DeploymentID     string         `json:"deployment_id"`
 	Claims           map[string]any `json:"claims"`
 	IATOffsetSeconds *int64         `json:"iat_offset_seconds"`
 	EXPOffsetSeconds *int64         `json:"exp_offset_seconds"`
 	Valid            bool           `json:"valid"`
 	Items            int            `json:"items"`
 	ErrorCode        lti.ErrorCode  `json:"error_code"`
+	ErrorDescription string         `json:"error_description"`
 }
 
 func loadVectors[T any](tb testing.TB, kind string) map[string]T {
@@ -113,7 +117,25 @@ func TestDeepLinkingVerifier_Verify_Vectors(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			verifier, err := NewDeepLinkingVerifier(createTestConfig(), fetcher, ltitest.NewNonceStore(), WithClock(func() time.Time { return now }))
+			cfg := createTestConfig()
+			session := DeepLinkingSession{
+				Tool:         Tool{ClientID: "client-1", JWKSURI: server.URL, Domains: []string{"tool.example.com"}},
+				DeploymentID: "deployment-1",
+				Settings: lti.DeepLinkingSettings{
+					AcceptTypes:    v.Session.AcceptTypes,
+					AcceptMultiple: v.Session.AcceptMultiple,
+					Data:           v.Session.Data,
+				},
+			}
+
+			// A vector taken from the spec carries the spec's own identifiers.
+			if v.PlatformIssuer != "" {
+				cfg.Issuer = v.PlatformIssuer
+				session.Tool.ClientID = v.ClientID
+				session.DeploymentID = v.DeploymentID
+			}
+
+			verifier, err := NewDeepLinkingVerifier(cfg, fetcher, ltitest.NewNonceStore(t), WithClock(func() time.Time { return now }))
 			require.NoError(t, err)
 
 			claims := v.Claims
@@ -125,20 +147,6 @@ func TestDeepLinkingVerifier_Verify_Vectors(t *testing.T) {
 				claims["exp"] = now.Unix() + *v.EXPOffsetSeconds
 			}
 
-			session := DeepLinkingSession{
-				Tool: Tool{
-					ClientID: "client-1",
-					JWKSURI:  server.URL,
-					Domains:  []string{"tool.example.com"},
-				},
-				DeploymentID: "deployment-1",
-				Settings: lti.DeepLinkingSettings{
-					AcceptTypes:    v.Session.AcceptTypes,
-					AcceptMultiple: v.Session.AcceptMultiple,
-					Data:           v.Session.Data,
-				},
-			}
-
 			response, err := verifier.Verify(t.Context(), ltitest.Sign(t, tool, claims), session)
 			if !v.Valid {
 				require.Error(t, err, v.Description)
@@ -146,6 +154,7 @@ func TestDeepLinkingVerifier_Verify_Vectors(t *testing.T) {
 				rejection, ok := lti.AsError(err)
 				require.True(t, ok, v.Description)
 				assert.Equal(t, v.ErrorCode, rejection.Code)
+				assert.Contains(t, rejection.Description, v.ErrorDescription, "the vector must fail for its own reason")
 
 				return
 			}

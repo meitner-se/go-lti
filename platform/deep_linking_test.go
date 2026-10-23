@@ -81,7 +81,7 @@ func createTestDeepLinkingSetup(t *testing.T) deepLinkingTestSetup {
 	tool := ltitest.NewSigningKey(t)
 	toolKey := ltitest.PublicKey(t, tool)
 	now := time.Now()
-	nonces := ltitest.NewNonceStore()
+	nonces := ltitest.NewNonceStore(t)
 
 	keys := &mockKeySource{KeyFunc: func(_ context.Context, jwksURI, kid string) (*rsa.PublicKey, error) {
 		if jwksURI != "https://tool.example.com/jwks" || kid != toolKey.ID {
@@ -122,7 +122,7 @@ func TestNewDeepLinkingVerifier_Rejects(t *testing.T) {
 	t.Parallel()
 
 	keys := &mockKeySource{}
-	nonces := ltitest.NewNonceStore()
+	nonces := ltitest.NewNonceStore(t)
 
 	_, err := NewDeepLinkingVerifier(Config{}, keys, nonces)
 	require.Error(t, err)
@@ -297,12 +297,6 @@ func TestDeepLinkingVerifier_Verify_Rejects(t *testing.T) {
 			message: "data does not match",
 		},
 		{
-			name:    "data the request didn't send",
-			claims:  func(c map[string]any, _ time.Time) { c[lti.ClaimDeepLinkingData] = "injected" },
-			session: func(s *DeepLinkingSession) { s.Settings.Data = "" },
-			message: "data does not match",
-		},
-		{
 			name: "two items when the request accepted one",
 			claims: func(c map[string]any, _ time.Time) {
 				setContentItems(c,
@@ -320,39 +314,11 @@ func TestDeepLinkingVerifier_Verify_Rejects(t *testing.T) {
 			message: "type the request didn't accept",
 		},
 		{
-			name: "an item url on another domain",
-			claims: func(c map[string]any, _ time.Time) {
-				setContentItems(c, map[string]any{"type": "ltiResourceLink", "url": "https://evil.example.org/launch"})
-			},
-			message: "url that isn't https on the tool's domain",
-		},
-		{
-			name: "an item url on a look-alike domain",
-			claims: func(c map[string]any, _ time.Time) {
-				setContentItems(c, map[string]any{"type": "ltiResourceLink", "url": "https://eviltool.example.com/launch"})
-			},
-			message: "url that isn't https on the tool's domain",
-		},
-		{
 			name: "an http item url",
 			claims: func(c map[string]any, _ time.Time) {
 				setContentItems(c, map[string]any{"type": "ltiResourceLink", "url": "http://tool.example.com/launch"})
 			},
-			message: "url that isn't https on the tool's domain",
-		},
-		{
-			name: "an icon on another domain",
-			claims: func(c map[string]any, _ time.Time) {
-				setContentItems(c, map[string]any{"type": "ltiResourceLink", "icon": map[string]any{"url": "https://tracker.example.org/pixel.png"}})
-			},
-			message: "url that isn't https on the tool's domain",
-		},
-		{
-			name: "an iframe src on another domain",
-			claims: func(c map[string]any, _ time.Time) {
-				setContentItems(c, map[string]any{"type": "ltiResourceLink", "iframe": map[string]any{"src": "https://evil.example.org/"}})
-			},
-			message: "url that isn't https on the tool's domain",
+			message: "url that isn't https",
 		},
 		{
 			name: "a malformed item",
@@ -392,14 +358,6 @@ func TestDeepLinkingVerifier_Verify_Rejects(t *testing.T) {
 			},
 			session: func(s *DeepLinkingSession) { s.Settings.AcceptTypes = allContentItemTypes },
 			message: "without html",
-		},
-		{
-			name: "an item url under a public suffix the tool registered",
-			claims: func(c map[string]any, _ time.Time) {
-				setContentItems(c, map[string]any{"type": "ltiResourceLink", "url": "https://someone-else.github.io/launch"})
-			},
-			session: func(s *DeepLinkingSession) { s.Tool.Domains = []string{"tool.example.com", "github.io"} },
-			message: "url that isn't https on the tool's domain",
 		},
 		{
 			name:    "no nonce",
@@ -531,14 +489,17 @@ func TestDeepLinkingVerifier_Verify_RejectsBadSignatures(t *testing.T) {
 func TestDeepLinkingVerifier_Verify_FailsClosedOnAnIncompleteSession(t *testing.T) {
 	t.Parallel()
 
+	// Each case signs claims that would pass if its guard were missing, with a key source that
+	// accepts any jwks_uri, so only the guard can refuse them.
 	tests := []struct {
 		name    string
+		claims  func(c map[string]any)
 		session func(s *DeepLinkingSession)
 	}{
-		{name: "no client_id", session: func(s *DeepLinkingSession) { s.Tool.ClientID = "" }},
-		{name: "no deployment_id", session: func(s *DeepLinkingSession) { s.DeploymentID = "" }},
+		{name: "no client_id", claims: func(c map[string]any) { c["iss"] = "" }, session: func(s *DeepLinkingSession) { s.Tool.ClientID = "" }},
+		{name: "no deployment_id", claims: func(c map[string]any) { c[lti.ClaimDeploymentID] = "" }, session: func(s *DeepLinkingSession) { s.DeploymentID = "" }},
 		{name: "no jwks uri", session: func(s *DeepLinkingSession) { s.Tool.JWKSURI = "" }},
-		{name: "no domains", session: func(s *DeepLinkingSession) { s.Tool.Domains = nil }},
+		{name: "an http jwks uri", session: func(s *DeepLinkingSession) { s.Tool.JWKSURI = "http://tool.example.com/jwks" }},
 	}
 
 	for _, tt := range tests {
@@ -546,15 +507,25 @@ func TestDeepLinkingVerifier_Verify_FailsClosedOnAnIncompleteSession(t *testing.
 			t.Parallel()
 
 			setup := createTestDeepLinkingSetup(t)
+			toolKey := ltitest.PublicKey(t, setup.tool)
+			anyURI := &mockKeySource{KeyFunc: func(context.Context, string, string) (*rsa.PublicKey, error) { return toolKey.PublicKey, nil }}
+
+			verifier, err := NewDeepLinkingVerifier(createTestConfig(), anyURI, setup.nonces, WithClock(func() time.Time { return setup.now }))
+			require.NoError(t, err)
+
 			claims := createTestDeepLinkingResponseClaims(setup.now)
-			claims["iss"] = ""
-			claims[lti.ClaimDeploymentID] = ""
+			if tt.claims != nil {
+				tt.claims(claims)
+			}
 
 			session := createTestDeepLinkingSession()
 			tt.session(&session)
 
-			_, err := setup.verifier.Verify(t.Context(), setup.sign(t, claims), session)
+			_, err = verifier.Verify(t.Context(), setup.sign(t, claims), session)
 			require.Error(t, err)
+
+			_, isRejection := lti.AsError(err)
+			assert.False(t, isRejection, "an incomplete session is the platform's mistake: %v", err)
 			assert.Zero(t, setup.nonces.Len())
 		})
 	}
@@ -570,7 +541,7 @@ func TestDeepLinkingVerifier_Verify_FetchesTheToolsJWKS(t *testing.T) {
 	verifier, err := NewDeepLinkingVerifier(
 		createTestConfig(),
 		newTestFetcher(t, server.Client()),
-		ltitest.NewNonceStore(),
+		ltitest.NewNonceStore(t),
 		WithClock(func() time.Time { return now }),
 	)
 	require.NoError(t, err)

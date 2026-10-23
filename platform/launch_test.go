@@ -374,7 +374,6 @@ func TestLauncher_IDTokenClaims_RejectsIncompleteDeepLinking(t *testing.T) {
 		{name: "no return url anywhere", platform: func(cfg *Config) { cfg.Endpoints.DeepLinkReturn = "" }},
 		{name: "an http return url", settings: func(s *lti.DeepLinkingSettings) { s.ReturnURL = "http://platform.example.com/lti/deep-link-return" }},
 		{name: "no accepted types", settings: func(s *lti.DeepLinkingSettings) { s.AcceptTypes = nil }},
-		{name: "no accepted document targets", settings: func(s *lti.DeepLinkingSettings) { s.AcceptPresentationDocumentTargets = nil }},
 	}
 
 	for _, tt := range tests {

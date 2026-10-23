@@ -1,5 +1,5 @@
 {
-  "description": "An ltiResourceLink shaped like the example in LTI Deep Linking 2.0 §3.1.",
+  "description": "An ltiResourceLink based on the one in Deep Linking 2.0 Appendix B, with its URLs on the test tool's host and a width added to the iframe.",
   "session": {
     "accept_types": [
       "ltiResourceLink"
@@ -43,7 +43,7 @@
         },
         "custom": {
           "quiz_id": "az-123",
-          "duedate": "$Resource.submission.endDateTime"
+          "duedate": "$ResourceLink.submission.endDateTime"
         }
       }
     ]

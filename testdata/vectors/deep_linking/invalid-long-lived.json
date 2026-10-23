@@ -51,5 +51,6 @@
   "iat_offset_seconds": 0,
   "exp_offset_seconds": 7200,
   "valid": false,
-  "error_code": "invalid_request"
+  "error_code": "invalid_request",
+  "error_description": "valid for more than an hour"
 }

@@ -3,6 +3,7 @@ package platform
 import (
 	"encoding/json"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/meitner-se/go-lti"
@@ -47,8 +48,9 @@ func FuzzParseRegistration(f *testing.F) {
 }
 
 func FuzzContentItems(f *testing.F) {
-	for _, v := range loadVectors[deepLinkingVector](f, "deep_linking") {
-		if items, ok := v.Claims[lti.ClaimContentItems]; ok {
+	vectors := loadVectors[deepLinkingVector](f, "deep_linking")
+	for name := range vectors {
+		if items, ok := vectors[name].Claims[lti.ClaimContentItems]; ok {
 			body, err := json.Marshal(items)
 			if err != nil {
 				f.Fatal(err)
@@ -60,8 +62,9 @@ func FuzzContentItems(f *testing.F) {
 
 	f.Add([]byte(`[{"type":"ltiResourceLink","url":"https://tool.example.com/a"}]`))
 	f.Add([]byte(`[{"type":"link"},{"type":"html","html":""}]`))
+	f.Add([]byte(`[{"type":"link","url":"https://evil.example/","URL":"https://tool.example.com/"}]`))
+	f.Add([]byte(`[{"type":"link","url":"https://a.example/","iframe":{"width":1.5}}]`))
 
-	domains := []string{"tool.example.com"}
 	settings := lti.DeepLinkingSettings{AcceptTypes: allContentItemTypes, AcceptMultiple: true}
 
 	f.Fuzz(func(t *testing.T, body []byte) {
@@ -70,7 +73,7 @@ func FuzzContentItems(f *testing.F) {
 			return
 		}
 
-		items, err := parseContentItems(raw, domains, settings)
+		items, err := parseContentItems(raw, settings)
 		if err != nil {
 			if _, ok := lti.AsError(err); !ok {
 				t.Fatalf("parseContentItems returned a non-lti error: %v", err)
@@ -79,16 +82,51 @@ func FuzzContentItems(f *testing.F) {
 			return
 		}
 
+		// Check each accepted item against its raw JSON, read independently with exact keys.
 		for i := range items {
-			if !slices.Contains(settings.AcceptTypes, items[i].Type) {
-				t.Fatalf("accepted type %q", items[i].Type)
+			var exact map[string]any
+			if err := json.Unmarshal(raw[i], &exact); err != nil {
+				t.Fatalf("accepted an item that isn't an object: %s", raw[i])
 			}
 
-			for _, u := range itemURLs(items[i]) {
-				if !urlcheck.OnDomains(u, domains) {
-					t.Fatalf("accepted url %q off the tool's domains", u)
+			itemType, _ := exact["type"].(string)
+			if !slices.Contains(settings.AcceptTypes, lti.ContentItemType(itemType)) || itemType != string(items[i].Type) {
+				t.Fatalf("accepted type %q, raw type %q", items[i].Type, itemType)
+			}
+
+			if rawURL, ok := exact["url"].(string); ok && rawURL != items[i].URL {
+				t.Fatalf("validated url %q but raw url %q", items[i].URL, rawURL)
+			}
+
+			for _, u := range rawURLs(exact) {
+				if !strings.HasPrefix(u, "https://") {
+					t.Fatalf("accepted a non-https url %q", u)
 				}
 			}
 		}
 	})
+}
+
+// rawURLs returns the url, icon.url, thumbnail.url and iframe.src members of a raw item.
+func rawURLs(item map[string]any) []string {
+	var urls []string
+
+	if u, ok := item["url"].(string); ok && u != "" {
+		urls = append(urls, u)
+	}
+
+	for _, member := range []string{"icon", "thumbnail"} {
+		if image, ok := item[member].(map[string]any); ok {
+			u, _ := image["url"].(string)
+			urls = append(urls, u)
+		}
+	}
+
+	if iframe, ok := item["iframe"].(map[string]any); ok {
+		if u, ok := iframe["src"].(string); ok && u != "" {
+			urls = append(urls, u)
+		}
+	}
+
+	return urls
 }
