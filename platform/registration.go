@@ -30,7 +30,7 @@ type Registration struct {
 	InitiateLoginURI string   `json:"initiate_login_uri"`
 	RedirectURIs     []string `json:"redirect_uris"`
 	ClientName       string   `json:"client_name"`
-	// ClientNames are the localized client_name#<language tag> variants, keyed by tag such as "fr".
+	// ClientNames are the localized client_name#<language tag> variants, keyed by tag such as "sv".
 	ClientNames             map[string]string `json:"-"`
 	JWKSURI                 string            `json:"jwks_uri"`
 	LogoURI                 string            `json:"logo_uri,omitempty"`
@@ -188,7 +188,7 @@ func parseLocalizedClientNames(body []byte) (map[string]string, error) {
 
 		var name string
 		if err := json.Unmarshal(raw, &name); err != nil || !isLanguageTag(tag) {
-			return nil, invalidMetadata("client_name#<language tag> must be a string under a language tag such as client_name#fr", nil)
+			return nil, invalidMetadata("client_name#<language tag> must be a string under a language tag such as client_name#sv", nil)
 		}
 
 		if name = strings.TrimSpace(name); name != "" {

@@ -54,7 +54,7 @@ func createTestCommon() lti.Common {
 		Subject:      "3f2a8c1e-7d4b-4e8f-9a6c-1b2d3e4f5a6b",
 		Roles:        []lti.Role{lti.RoleLearner},
 		Context:      &lti.LaunchContext{ID: "course-1", Title: "Biology 1", Types: []lti.ContextType{lti.ContextTypeCourseOffering}},
-		Presentation: lti.Presentation{DocumentTarget: lti.DocumentTargetIframe, Locale: "en"},
+		Presentation: lti.Presentation{DocumentTarget: lti.DocumentTargetIframe, Locale: "sv"},
 		User:         lti.User{Name: "Ada Lovelace", GivenName: "Ada", FamilyName: "Lovelace", Email: "ada@example.com"},
 	}
 }
@@ -155,7 +155,7 @@ func TestLauncher_IDTokenClaims_ResourceLinkRequest(t *testing.T) {
 			"type": ["http://purl.imsglobal.org/vocab/lis/v2/course#CourseOffering"]
 		},
 		"https://purl.imsglobal.org/spec/lti/claim/resource_link": {"id": "link-1", "title": "Cell quiz"},
-		"https://purl.imsglobal.org/spec/lti/claim/launch_presentation": {"document_target": "iframe", "locale": "en"},
+		"https://purl.imsglobal.org/spec/lti/claim/launch_presentation": {"document_target": "iframe", "locale": "sv"},
 		"https://purl.imsglobal.org/spec/lti/claim/tool_platform": {
 			"guid": "platform-1",
 			"name": "Example LMS",
