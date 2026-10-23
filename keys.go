@@ -1,10 +1,14 @@
 package lti
 
 import (
+	"bytes"
 	"context"
 	"crypto"
 	"crypto/rsa"
+	"crypto/x509"
+	"encoding/pem"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/meitner-se/go-lti/jwks"
@@ -14,17 +18,15 @@ import (
 // least 2048 bits that signs PKCS #1 v1.5 when asked for crypto.SHA256: an *rsa.PrivateKey loaded
 // from secret storage, or a KMS or HSM client.
 type SigningKey struct {
-	// ID is the kid in the JWT header and the published JWKS.
+	// ID is the kid in the JWT header and the published JWKS. It defaults to the public key's
+	// jwks.Thumbprint.
 	ID     string
 	Signer crypto.Signer
 }
 
-// PublicKey returns the key to publish, checking that it is an RSA key of at least 2048 bits.
+// PublicKey returns the key to publish, with its kid, checking that it is an RSA key of at least
+// 2048 bits.
 func (k SigningKey) PublicKey() (jwks.Key, error) {
-	if k.ID == "" {
-		return jwks.Key{}, errors.New("lti: signing key has no kid")
-	}
-
 	if k.Signer == nil {
 		return jwks.Key{}, errors.New("lti: signing key has no signer")
 	}
@@ -38,7 +40,57 @@ func (k SigningKey) PublicKey() (jwks.Key, error) {
 		return jwks.Key{}, errors.New("lti: signing key is shorter than 2048 bits")
 	}
 
-	return jwks.Key{ID: k.ID, PublicKey: publicKey}, nil
+	kid := k.ID
+	if kid == "" {
+		kid = jwks.Thumbprint(publicKey)
+	}
+
+	return jwks.Key{ID: kid, PublicKey: publicKey}, nil
+}
+
+// ParseRSAPrivateKeyPEM parses an unencrypted RSA private key of at least 2048 bits from a PEM
+// block, in PKCS #1 ("RSA PRIVATE KEY") or PKCS #8 ("PRIVATE KEY") form.
+func ParseRSAPrivateKeyPEM(data []byte) (*rsa.PrivateKey, error) {
+	block, rest := pem.Decode(data)
+	if block == nil {
+		return nil, errors.New("lti: no pem block")
+	}
+
+	if len(bytes.TrimSpace(rest)) > 0 {
+		return nil, errors.New("lti: more than one pem block")
+	}
+
+	var key *rsa.PrivateKey
+
+	switch block.Type {
+	case "RSA PRIVATE KEY":
+		parsed, err := x509.ParsePKCS1PrivateKey(block.Bytes)
+		if err != nil {
+			return nil, fmt.Errorf("lti: cannot parse pkcs #1 key: %w", err)
+		}
+
+		key = parsed
+	case "PRIVATE KEY":
+		parsed, err := x509.ParsePKCS8PrivateKey(block.Bytes)
+		if err != nil {
+			return nil, fmt.Errorf("lti: cannot parse pkcs #8 key: %w", err)
+		}
+
+		rsaKey, ok := parsed.(*rsa.PrivateKey)
+		if !ok {
+			return nil, errors.New("lti: pem key is not an rsa key")
+		}
+
+		key = rsaKey
+	default:
+		return nil, fmt.Errorf("lti: pem block %q is not an unencrypted private key", block.Type)
+	}
+
+	if key.N.BitLen() < jwks.MinRSABits {
+		return nil, errors.New("lti: rsa key is shorter than 2048 bits")
+	}
+
+	return key, nil
 }
 
 // Keys supplies the key to sign with and the public keys to publish. An implementation may re-read
@@ -64,12 +116,14 @@ func StaticKeys(current SigningKey, publish ...jwks.Key) (Keys, error) {
 			return nil, errors.New("lti: published keys need a kid and a public key")
 		}
 
-		if key.ID == current.ID {
+		if key.ID == currentPublic.ID {
 			continue
 		}
 
 		public = append(public, key)
 	}
+
+	current.ID = currentPublic.ID
 
 	return staticKeys{current: current, public: public}, nil
 }

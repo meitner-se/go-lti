@@ -1,5 +1,7 @@
 package lti
 
+import "strings"
+
 // MessageType is an LTI message type.
 type MessageType string
 
@@ -123,3 +125,25 @@ const (
 	VariableResourceLinkDescription Variable = "ResourceLink.description"
 	VariableMessageLocale           Variable = "Message.locale"
 )
+
+// Substitute returns custom with each value that is exactly "$<Variable>" replaced by that
+// variable's value in values. Values that name a variable missing from values, or that only
+// contain one, stay as they are, as LTI 1.3 requires for variables the platform doesn't support.
+func Substitute(custom map[string]string, values map[Variable]string) map[string]string {
+	if custom == nil {
+		return nil
+	}
+
+	out := make(map[string]string, len(custom))
+	for name, value := range custom {
+		if variable, ok := strings.CutPrefix(value, "$"); ok {
+			if substituted, ok := values[Variable(variable)]; ok {
+				value = substituted
+			}
+		}
+
+		out[name] = value
+	}
+
+	return out
+}

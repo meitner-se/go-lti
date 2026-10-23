@@ -2,9 +2,12 @@ package platform_test
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"time"
 
 	"github.com/meitner-se/go-lti"
@@ -23,6 +26,80 @@ var exampleConfig = platform.Config{
 		DeepLinkReturn: "https://lms.example.com/lti/deep-link-return",
 	},
 	Product: platform.Product{GUID: "lms-1", Name: "Example LMS", FamilyCode: "example-lms", Version: "1.0.0"},
+}
+
+// A launch is three requests: the platform sends the browser to the tool, the tool sends it back
+// with an authentication request, and the platform answers with a signed id_token.
+func Example_launch() {
+	// Load the key from secret storage with lti.ParseRSAPrivateKeyPEM; generated here for the example.
+	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	keys, err := lti.StaticKeys(lti.SigningKey{ID: "key-1", Signer: privateKey})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	launcher, err := platform.NewLauncher(exampleConfig, keys)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	tool := platform.Tool{
+		ClientID:         "client-1",
+		InitiateLoginURI: "https://tool.example.com/lti/login",
+		RedirectURIs:     []string{"https://tool.example.com/lti/launch"},
+		TargetLinkURI:    "https://tool.example.com/lti/launch",
+	}
+
+	// 1. Where the user clicks. The hints are opaque: the platform decides what they are.
+	loginURL, err := exampleConfig.LoginInitiationURL(tool, platform.LoginInitiation{
+		DeploymentID: "deployment-1",
+		LoginHint:    "user-1",
+		MessageHint:  "launch-1",
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	fmt.Println(loginURL)
+
+	// 2. At Endpoints.Authorization, the tool's request comes back.
+	req, err := platform.ParseAuthenticationRequest(url.Values{
+		"scope": {"openid"}, "response_type": {"id_token"}, "response_mode": {"form_post"}, "prompt": {"none"},
+		"client_id": {"client-1"}, "redirect_uri": {"https://tool.example.com/lti/launch"},
+		"login_hint": {"user-1"}, "lti_message_hint": {"launch-1"}, "nonce": {"n-0S6_WzA2Mj"}, "state": {"af0ifjsldkj"},
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// 3. Redeem req.MessageHint for the launch it stands for, then answer with the id_token.
+	form, err := launcher.Respond(context.Background(), req, platform.Launch{
+		Tool:      tool,
+		LoginHint: "user-1",
+		Message: &lti.ResourceLinkRequest{
+			Common: lti.Common{
+				DeploymentID: "deployment-1",
+				Subject:      "a6d5c443-1f51-4783-ba1a-7686ffe3b54a",
+				Roles:        []lti.Role{lti.RoleLearner},
+			},
+			ResourceLink: lti.ResourceLink{ID: "link-1", Title: "Quiz"},
+		},
+	})
+	if err != nil {
+		// For a rejection, launcher.RespondError(req, tool, err) returns the form that tells the tool.
+		log.Fatal(err)
+	}
+
+	// form.ServeHTTP(w, r) writes the page that posts id_token and state to the tool.
+	fmt.Println(form.Action, form.Fields[0].Name, form.Fields[1].Name)
+
+	// Output:
+	// https://tool.example.com/lti/login?client_id=client-1&iss=https%3A%2F%2Flms.example.com%2Flti&login_hint=user-1&lti_deployment_id=deployment-1&lti_message_hint=launch-1&target_link_uri=https%3A%2F%2Ftool.example.com%2Flti%2Flaunch
+	// https://tool.example.com/lti/launch id_token state
 }
 
 // A tool registers itself; the admin reviews what it asks for before anything goes live.

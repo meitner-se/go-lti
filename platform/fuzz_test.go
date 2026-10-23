@@ -2,6 +2,7 @@ package platform
 
 import (
 	"encoding/json"
+	"net/url"
 	"slices"
 	"testing"
 
@@ -88,6 +89,47 @@ func FuzzContentItems(f *testing.F) {
 				if !urlcheck.OnDomains(u, domains) {
 					t.Fatalf("accepted url %q off the tool's domains", u)
 				}
+			}
+		}
+	})
+}
+
+func FuzzParseAuthenticationRequest(f *testing.F) {
+	for _, v := range loadVectors[authenticationRequestVector](f, "authentication_request") {
+		f.Add(v.Form.Encode())
+	}
+
+	f.Add("client_id=&redirect_uri=&nonce=")
+	f.Add("scope=openid%20openid&response_type=id_token&response_type=id_token")
+
+	f.Fuzz(func(t *testing.T, query string) {
+		form, err := url.ParseQuery(query)
+		if err != nil {
+			return
+		}
+
+		req, err := ParseAuthenticationRequest(form)
+		if req == nil {
+			t.Fatal("ParseAuthenticationRequest returned no request")
+		}
+
+		if err != nil {
+			if _, ok := lti.AsError(err); !ok {
+				t.Fatalf("ParseAuthenticationRequest returned a non-lti error: %v", err)
+			}
+
+			return
+		}
+
+		for name, value := range map[string]string{"client_id": req.ClientID, "redirect_uri": req.RedirectURI, "login_hint": req.LoginHint, "nonce": req.Nonce} {
+			if value == "" || len(value) > maxAuthenticationParameterBytes {
+				t.Fatalf("accepted %s %q", name, value)
+			}
+		}
+
+		for name, values := range form {
+			if len(values) != 1 {
+				t.Fatalf("accepted repeated %s", name)
 			}
 		}
 	})

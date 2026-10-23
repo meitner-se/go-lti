@@ -15,6 +15,12 @@ rejected as a whole.
 has `expect`: the tool's `domains`, whether it `requests_name` or `requests_email`, and its
 localized `client_names`. An invalid case has the RFC 7591 `error_code` to answer with.
 
+## `authentication_request/`
+
+`form` is the tool's OIDC authentication request to the authorization endpoint, as form values
+(each a list, since a parameter may be repeated). A valid case must parse; an invalid case has the
+`error_code` to answer with.
+
 ## `deep_linking/`
 
 `claims` is the payload of an LtiDeepLinkingResponse, without `iat` and `exp`. Sign it with RS256

@@ -463,3 +463,12 @@ func TestLauncher_IDToken_DoesNotVerifyAgainstAnotherKey(t *testing.T) {
 	}, jwt.WithValidMethods([]string{"RS256"}))
 	require.Error(t, err)
 }
+
+func mustJSON(t *testing.T, v any) []byte {
+	t.Helper()
+
+	body, err := json.Marshal(v)
+	require.NoError(t, err)
+
+	return body
+}
