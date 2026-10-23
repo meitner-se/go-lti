@@ -466,7 +466,7 @@ func TestRegistrationInitiationURL(t *testing.T) {
 	t.Parallel()
 
 	raw, err := RegistrationInitiationURL(
-		"https://tool.example.com/register?lang=en",
+		"https://tool.example.com/register?lang=sv",
 		"https://platform.example.com/lti/.well-known/openid-configuration",
 		"token-1",
 	)
@@ -475,7 +475,7 @@ func TestRegistrationInitiationURL(t *testing.T) {
 	u, err := url.Parse(raw)
 	require.NoError(t, err)
 	assert.Equal(t, url.Values{
-		"lang":                 {"en"},
+		"lang":                 {"sv"},
 		"openid_configuration": {"https://platform.example.com/lti/.well-known/openid-configuration"},
 		"registration_token":   {"token-1"},
 	}, u.Query())
