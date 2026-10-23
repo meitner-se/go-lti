@@ -50,5 +50,6 @@
     }
   },
   "valid": false,
-  "error_code": "invalid_redirect_uri"
+  "error_code": "invalid_redirect_uri",
+  "error_description": "redirect_uris must be https urls, without a fragment or localhost"
 }

@@ -1,18 +1,24 @@
 package platform
 
 import (
+	"context"
+	"crypto/rsa"
 	"encoding/json"
 	"slices"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/meitner-se/go-lti"
-	"github.com/meitner-se/go-lti/internal/urlcheck"
+	"github.com/meitner-se/go-lti/ltitest"
 )
 
 func FuzzParseRegistration(f *testing.F) {
-	for _, v := range loadVectors[registrationVector](f, "registration") {
-		f.Add([]byte(v.Request))
+	vectors := loadVectors[registrationVector](f, "registration")
+	for name := range vectors {
+		f.Add([]byte(vectors[name].Request))
 	}
 
 	f.Add([]byte(`{"client_name#":"x"}`))
@@ -28,21 +34,28 @@ func FuzzParseRegistration(f *testing.F) {
 			return
 		}
 
+		// Checked by hand rather than with the package's own helpers.
 		tool := reg.Tool("client")
 		for _, domain := range tool.Domains {
-			if !urlcheck.IsDomain(domain) {
+			if domain == "" || strings.ContainsAny(domain, ":/?#@* ") {
 				t.Fatalf("accepted domain %q", domain)
 			}
 		}
 
-		for _, uri := range append([]string{tool.InitiateLoginURI, tool.TargetLinkURI}, tool.RedirectURIs...) {
-			if !urlcheck.OnDomains(uri, tool.Domains) {
-				t.Fatalf("accepted %q off the tool's domains %v", uri, tool.Domains)
+		for _, uri := range append([]string{tool.InitiateLoginURI, tool.TargetLinkURI, tool.JWKSURI}, tool.RedirectURIs...) {
+			if !strings.HasPrefix(uri, "https://") {
+				t.Fatalf("accepted a non-https uri %q", uri)
 			}
 		}
 
-		if !urlcheck.IsHTTPS(tool.JWKSURI) {
-			t.Fatalf("accepted jwks_uri %q", tool.JWKSURI)
+		for _, uri := range tool.RedirectURIs {
+			if strings.Contains(uri, "#") {
+				t.Fatalf("accepted a redirect uri with a fragment %q", uri)
+			}
+		}
+
+		if !slices.Contains(reg.GrantTypes, "implicit") || !slices.Contains(reg.ResponseTypes, "id_token") || reg.TokenEndpointAuthMethod != "private_key_jwt" {
+			t.Fatalf("accepted a registration without what LTI requires: %+v", reg)
 		}
 	})
 }
@@ -129,4 +142,58 @@ func rawURLs(item map[string]any) []string {
 	}
 
 	return urls
+}
+
+// FuzzVerify signs fuzzed response claims with a real tool key and checks every accepted response
+// against the rules Verify promises, worked out from the claims rather than from Verify's code.
+func FuzzVerify(f *testing.F) {
+	f.Add(int64(0), int64(300), "nonce", "request-1", "deployment-1", "https://platform.example.com/lti", "client-1")
+	f.Add(int64(30), int64(3630), "n", "request-1", "deployment-1", "https://platform.example.com/lti", "client-1")
+	f.Add(int64(-7200), int64(-30), "n", "", "deployment-1", "https://platform.example.com/lti", "client-1")
+	f.Add(int64(0), int64(300), "", "x", "", "", "")
+
+	tool := ltitest.NewSigningKey(f)
+	toolKey := ltitest.PublicKey(f, tool)
+	now := testNow
+	keys := &mockKeySource{KeyFunc: func(context.Context, string, string) (*rsa.PublicKey, error) { return toolKey.PublicKey, nil }}
+
+	f.Fuzz(func(t *testing.T, iatOffset, expOffset int64, nonce, data, deployment, audience, issuer string) {
+		verifier, err := NewDeepLinkingVerifier(createTestConfig(), keys, ltitest.NewNonceStore(t), WithClock(func() time.Time { return now }))
+		require.NoError(t, err)
+
+		claims := createTestDeepLinkingResponseClaims(now)
+		claims["iat"] = now.Unix() + iatOffset%100000
+		claims["exp"] = now.Unix() + expOffset%100000
+		claims["nonce"] = nonce
+		claims[lti.ClaimDeepLinkingData] = data
+		claims[lti.ClaimDeploymentID] = deployment
+		claims["aud"] = audience
+		claims["iss"] = issuer
+
+		_, err = verifier.Verify(t.Context(), ltitest.Sign(t, tool, claims), createTestDeepLinkingSession())
+		if err != nil {
+			if _, ok := lti.AsError(err); !ok {
+				t.Fatalf("Verify returned a non-lti error: %v", err)
+			}
+
+			return
+		}
+
+		iat, exp := iatOffset%100000, expOffset%100000
+
+		switch {
+		case issuer != "client-1" || audience != "https://platform.example.com/lti":
+			t.Fatalf("accepted iss %q and aud %q", issuer, audience)
+		case deployment != "deployment-1":
+			t.Fatalf("accepted deployment %q", deployment)
+		case data != "request-1":
+			t.Fatalf("accepted data %q", data)
+		case nonce == "" || len(nonce) > 1024:
+			t.Fatalf("accepted nonce %q", nonce)
+		case exp < iat || exp-iat > 3600:
+			t.Fatalf("accepted a lifetime of %d s", exp-iat)
+		case exp < -60 || iat > 60:
+			t.Fatalf("accepted iat %+d s and exp %+d s from now", iat, exp)
+		}
+	})
 }

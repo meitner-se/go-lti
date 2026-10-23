@@ -21,15 +21,18 @@ import (
 
 //nolint:tagliatelle // the vector files are shared with other languages and use snake_case
 type registrationVector struct {
-	Description string          `json:"description"`
-	Request     json.RawMessage `json:"request"`
-	Valid       bool            `json:"valid"`
-	ErrorCode   lti.ErrorCode   `json:"error_code"`
-	Expect      struct {
-		Domains       []string          `json:"domains"`
-		RequestsName  bool              `json:"requests_name"`
-		RequestsEmail bool              `json:"requests_email"`
-		ClientNames   map[string]string `json:"client_names"`
+	Description      string          `json:"description"`
+	Request          json.RawMessage `json:"request"`
+	Valid            bool            `json:"valid"`
+	ErrorCode        lti.ErrorCode   `json:"error_code"`
+	ErrorDescription string          `json:"error_description"`
+	Expect           struct {
+		Domains             []string          `json:"domains"`
+		RequestsName        bool              `json:"requests_name"`
+		RequestsEmail       bool              `json:"requests_email"`
+		ClientNames         map[string]string `json:"client_names"`
+		OffDomainURIs       []string          `json:"off_domain_uris"`
+		PublicSuffixDomains []string          `json:"public_suffix_domains"`
 	} `json:"expect"`
 }
 
@@ -89,7 +92,7 @@ func TestParseRegistration_Vectors(t *testing.T) {
 
 			reg, err := ParseRegistration(v.Request)
 			if !v.Valid {
-				requireRegistrationRejection(t, err, v.ErrorCode, "")
+				requireRegistrationRejection(t, err, v.ErrorCode, v.ErrorDescription)
 
 				return
 			}
@@ -101,6 +104,8 @@ func TestParseRegistration_Vectors(t *testing.T) {
 			assert.Equal(t, v.Expect.RequestsName, review.RequestsName)
 			assert.Equal(t, v.Expect.RequestsEmail, review.RequestsEmail)
 			assert.Equal(t, v.Expect.ClientNames, review.ClientNames)
+			assert.ElementsMatch(t, v.Expect.OffDomainURIs, review.OffDomainURIs)
+			assert.ElementsMatch(t, v.Expect.PublicSuffixDomains, review.PublicSuffixDomains)
 		})
 	}
 }

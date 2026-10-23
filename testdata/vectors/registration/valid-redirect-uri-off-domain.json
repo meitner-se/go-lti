@@ -1,5 +1,5 @@
 {
-  "description": "A domain that is a public suffix would match every site under it.",
+  "description": "A redirect URI outside the tool's domains. Dynamic Registration only says redirect_uris are as per OIDC Registration, so it is accepted, and the review lists it.",
   "request": {
     "application_type": "web",
     "response_types": [
@@ -11,8 +11,7 @@
     ],
     "initiate_login_uri": "https://client.example.org/lti",
     "redirect_uris": [
-      "https://client.example.org/callback",
-      "https://client.example.org/callback2"
+      "https://evil.example.net/callback"
     ],
     "client_name": "Virtual Garden",
     "client_name#sv": "Virtuell trädgård",
@@ -28,7 +27,7 @@
     ],
     "scope": "https://purl.imsglobal.org/spec/lti-ags/scope/score https://purl.imsglobal.org/spec/lti-nrps/scope/contextmembership.readonly",
     "https://purl.imsglobal.org/spec/lti-tool-configuration": {
-      "domain": "github.io",
+      "domain": "client.example.org",
       "description": "Learn botany by tending to your little (virtual) garden.",
       "target_link_uri": "https://client.example.org/lti",
       "custom_parameters": {
@@ -50,6 +49,19 @@
       ]
     }
   },
-  "valid": false,
-  "error_code": "invalid_client_metadata"
+  "valid": true,
+  "expect": {
+    "domains": [
+      "client.example.org"
+    ],
+    "requests_name": true,
+    "requests_email": false,
+    "client_names": {
+      "sv": "Virtuell trädgård"
+    },
+    "off_domain_uris": [
+      "https://evil.example.net/callback"
+    ],
+    "public_suffix_domains": []
+  }
 }

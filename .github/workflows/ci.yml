@@ -59,6 +59,8 @@ jobs:
           - { package: ./jwks, target: FuzzParseSet }
           - { package: ./platform, target: FuzzParseRegistration }
           - { package: ./platform, target: FuzzContentItems }
+          - { package: ./platform, target: FuzzVerify }
+          - { package: ./internal/urlcheck, target: FuzzOnDomains }
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-go@v6

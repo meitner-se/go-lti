@@ -253,7 +253,7 @@ func validateCommon(c lti.Common, targetLinkURI string) error {
 	}
 }
 
-//nolint:tagliatelle // LTI 1.3 §5.4.3 defines snake_case keys
+//nolint:tagliatelle // LTI 1.3 §5.4.2 defines snake_case keys
 type toolPlatform struct {
 	GUID              string `json:"guid"`
 	Name              string `json:"name,omitempty"`

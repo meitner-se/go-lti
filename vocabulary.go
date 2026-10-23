@@ -103,7 +103,7 @@ const (
 	ScopeNRPSMembershipRead  Scope = "https://purl.imsglobal.org/spec/lti-nrps/scope/contextmembership.readonly"
 )
 
-// Variable is a substitution variable for custom parameter values (LTI 1.3 variable substitution),
+// Variable is a substitution variable for custom parameter values (LTI 1.3 Appendix B),
 // written without its "$".
 type Variable string
 

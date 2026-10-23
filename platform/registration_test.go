@@ -227,41 +227,47 @@ func TestParseRegistration_RejectsBadLocalizedNames(t *testing.T) {
 func TestParseRegistration_Rejects(t *testing.T) {
 	t.Parallel()
 
+	const (
+		badDomain    = "domain must be a host name such as tool.example.com, without the protocol"
+		badSecondary = "secondary_domains must be host names such as tool.example.com, without the protocol"
+		badRedirect  = "redirect_uris must be https urls, without a fragment or localhost"
+	)
+
 	tests := []struct {
 		name    string
 		change  func(body map[string]any)
 		message string
 	}{
-		{name: "a native application", change: func(b map[string]any) { b["application_type"] = "native" }, message: "application_type"},
-		{name: "no id_token response type", change: func(b map[string]any) { b["response_types"] = []string{"code"} }, message: "response_types"},
-		{name: "no implicit grant", change: func(b map[string]any) { b["grant_types"] = []string{"client_credentials"} }, message: "grant_types"},
-		{name: "no client_credentials grant", change: func(b map[string]any) { b["grant_types"] = []string{"implicit"} }, message: "grant_types"},
-		{name: "client secret authentication", change: func(b map[string]any) { b["token_endpoint_auth_method"] = "client_secret_basic" }, message: "token_endpoint_auth_method"},
-		{name: "an http jwks_uri", change: func(b map[string]any) { b["jwks_uri"] = "http://client.example.org/jwks" }, message: "jwks_uri"},
-		{name: "no jwks_uri", change: func(b map[string]any) { delete(b, "jwks_uri") }, message: "jwks_uri"},
-		{name: "no domain", change: func(b map[string]any) { delete(toolConfiguration(b), "domain") }, message: "domain"},
-		{name: "a domain with a path", change: func(b map[string]any) { toolConfiguration(b)["domain"] = "client.example.org/lti" }, message: "domain"},
-		{name: "a top-level domain", change: func(b map[string]any) { toolConfiguration(b)["domain"] = "org" }, message: "domain"},
-		{name: "a public suffix domain", change: func(b map[string]any) { toolConfiguration(b)["domain"] = "co.uk" }, message: "domain"},
-		{name: "a private public suffix domain", change: func(b map[string]any) { toolConfiguration(b)["domain"] = "github.io" }, message: "domain"},
-		{name: "a public suffix secondary domain", change: func(b map[string]any) { toolConfiguration(b)["secondary_domains"] = []string{"github.io"} }, message: "secondary_domains"},
-		{name: "a bad secondary domain", change: func(b map[string]any) {
+		{name: "a native application", change: func(b map[string]any) { b["application_type"] = "native" }, message: "application_type must be web"},
+		{name: "no id_token response type", change: func(b map[string]any) { b["response_types"] = []string{"code"} }, message: "response_types must include id_token"},
+		{name: "no implicit grant", change: func(b map[string]any) { b["grant_types"] = []string{"client_credentials"} }, message: "grant_types must include implicit and client_credentials"},
+		{name: "the implict typo from the spec's examples", change: func(b map[string]any) { b["grant_types"] = []string{"implict", "client_credentials"} }, message: "grant_types must include implicit and client_credentials"},
+		{name: "no client_credentials grant", change: func(b map[string]any) { b["grant_types"] = []string{"implicit"} }, message: "grant_types must include implicit and client_credentials"},
+		{name: "client secret authentication", change: func(b map[string]any) { b["token_endpoint_auth_method"] = "client_secret_basic" }, message: "token_endpoint_auth_method must be private_key_jwt"},
+		{name: "an http jwks_uri", change: func(b map[string]any) { b["jwks_uri"] = "http://client.example.org/jwks" }, message: "jwks_uri must be an absolute https url"},
+		{name: "no jwks_uri", change: func(b map[string]any) { delete(b, "jwks_uri") }, message: "jwks_uri must be an absolute https url"},
+		{name: "no domain", change: func(b map[string]any) { delete(toolConfiguration(b), "domain") }, message: badDomain},
+		{name: "a domain with the protocol", change: func(b map[string]any) { toolConfiguration(b)["domain"] = "https://client.example.org" }, message: badDomain},
+		{name: "a domain with a path", change: func(b map[string]any) { toolConfiguration(b)["domain"] = "client.example.org/lti" }, message: badDomain},
+		{name: "a wildcard domain", change: func(b map[string]any) { toolConfiguration(b)["domain"] = "*.example.org" }, message: badDomain},
+		{name: "a non-ascii domain", change: func(b map[string]any) { toolConfiguration(b)["domain"] = "bücher.example.org" }, message: badDomain},
+		{name: "a secondary domain with the protocol", change: func(b map[string]any) {
 			toolConfiguration(b)["secondary_domains"] = []string{"https://cdn.example.com"}
-		}, message: "secondary_domains"},
-		{name: "an http initiate_login_uri", change: func(b map[string]any) { b["initiate_login_uri"] = "http://client.example.org/lti" }, message: "initiate_login_uri"},
-		{name: "an initiate_login_uri on another domain", change: func(b map[string]any) { b["initiate_login_uri"] = "https://evil.example.net/lti" }, message: "initiate_login_uri"},
-		{name: "no redirect_uris", change: func(b map[string]any) { b["redirect_uris"] = []string{} }, message: "redirect_uris"},
-		{name: "a redirect_uri on another domain", change: func(b map[string]any) { b["redirect_uris"] = []string{"https://evil.example.net/callback"} }, message: "redirect_uris"},
-		{name: "a redirect_uri with a fragment", change: func(b map[string]any) { b["redirect_uris"] = []string{"https://client.example.org/callback#x"} }, message: "redirect_uris"},
-		{name: "a target_link_uri on another domain", change: func(b map[string]any) { toolConfiguration(b)["target_link_uri"] = "https://evil.example.net/lti" }, message: "target_link_uri"},
+		}, message: badSecondary},
+		{name: "an http initiate_login_uri", change: func(b map[string]any) { b["initiate_login_uri"] = "http://client.example.org/lti" }, message: "initiate_login_uri must be an absolute https url"},
+		{name: "no redirect_uris", change: func(b map[string]any) { b["redirect_uris"] = []string{} }, message: "redirect_uris must have at least one url"},
+		{name: "an http redirect_uri", change: func(b map[string]any) { b["redirect_uris"] = []string{"http://client.example.org/callback"} }, message: badRedirect},
+		{name: "a localhost redirect_uri", change: func(b map[string]any) { b["redirect_uris"] = []string{"https://localhost/callback"} }, message: badRedirect},
+		{name: "a redirect_uri with a fragment", change: func(b map[string]any) { b["redirect_uris"] = []string{"https://client.example.org/callback#x"} }, message: badRedirect},
+		{name: "an http target_link_uri", change: func(b map[string]any) { toolConfiguration(b)["target_link_uri"] = "http://client.example.org/lti" }, message: "target_link_uri must be an absolute https url"},
 		{
-			name: "a message target_link_uri on another domain",
+			name: "an http message target_link_uri",
 			change: func(b map[string]any) {
-				toolConfiguration(b)["messages"] = []any{map[string]any{"type": "LtiDeepLinkingRequest", "target_link_uri": "https://evil.example.net/dl"}}
+				toolConfiguration(b)["messages"] = []any{map[string]any{"type": "LtiDeepLinkingRequest", "target_link_uri": "http://client.example.org/dl"}}
 			},
-			message: "message's target_link_uri",
+			message: "a message's target_link_uri must be an absolute https url",
 		},
-		{name: "a message without a type", change: func(b map[string]any) { toolConfiguration(b)["messages"] = []any{map[string]any{"label": "x"}} }, message: "type"},
+		{name: "a message without a type", change: func(b map[string]any) { toolConfiguration(b)["messages"] = []any{map[string]any{"label": "x"}} }, message: "every message must have a type"},
 		{name: "a wrongly typed field", change: func(b map[string]any) { b["redirect_uris"] = "https://client.example.org/callback" }, message: "not valid client metadata json"},
 	}
 
@@ -274,7 +280,7 @@ func TestParseRegistration_Rejects(t *testing.T) {
 
 			// RFC 7591 §3.2.2 has its own code for redirect uris.
 			code := lti.ErrorInvalidClientMetadata
-			if tt.message == "redirect_uris" {
+			if strings.HasPrefix(tt.message, "redirect_uris") {
 				code = lti.ErrorInvalidRedirectURI
 			}
 
@@ -282,6 +288,69 @@ func TestParseRegistration_Rejects(t *testing.T) {
 			requireRegistrationRejection(t, err, code, tt.message)
 		})
 	}
+}
+
+func TestRegression_RegistrationAcceptsOffDomainURIsAndShowsThem(t *testing.T) {
+	t.Parallel()
+
+	body := createTestRegistrationJSON()
+	body["initiate_login_uri"] = "https://auth.vendor.example/lti"
+	body["redirect_uris"] = []string{"https://client.example.org/callback", "https://auth.vendor.example/callback"}
+	toolConfiguration(body)["messages"] = []any{map[string]any{"type": "LtiDeepLinkingRequest", "target_link_uri": "https://picker.vendor.example/dl"}}
+
+	reg, err := ParseRegistration(encodeRegistration(t, body))
+	require.NoError(t, err, "Dynamic Registration only says the URIs are as per OIDC Registration")
+
+	assert.Equal(t, []string{"https://auth.vendor.example/lti", "https://auth.vendor.example/callback", "https://picker.vendor.example/dl"}, reg.Review(createTestConfig()).OffDomainURIs)
+	assert.Empty(t, parseTestRegistration(t).Review(createTestConfig()).OffDomainURIs)
+}
+
+func TestRegression_RegistrationAcceptsPublicSuffixDomainsAndShowsThem(t *testing.T) {
+	t.Parallel()
+
+	body := createTestRegistrationJSON()
+	toolConfiguration(body)["domain"] = "github.io"
+	toolConfiguration(body)["secondary_domains"] = []string{"co.uk", "cdn.example.com"}
+
+	reg, err := ParseRegistration(encodeRegistration(t, body))
+	require.NoError(t, err)
+
+	review := reg.Review(createTestConfig())
+	assert.Equal(t, []string{"github.io", "co.uk"}, review.PublicSuffixDomains)
+	assert.False(t, OnToolDomains(reg.Tool("client-1"), "https://someone.github.io/"))
+}
+
+func TestRegression_ReviewCountsPersonalDataInCustomParameters(t *testing.T) {
+	t.Parallel()
+
+	body := createTestRegistrationJSON()
+	toolConfiguration(body)["claims"] = []string{"iss", "sub"}
+	toolConfiguration(body)["custom_parameters"] = map[string]any{"n": "$Person.name.full", "course": "$Context.id"}
+	toolConfiguration(body)["messages"] = []any{map[string]any{"type": "LtiResourceLinkRequest", "custom_parameters": map[string]any{"e": "$Person.email.primary", "u": "$User.username"}}}
+
+	reg, err := ParseRegistration(encodeRegistration(t, body))
+	require.NoError(t, err)
+
+	review := reg.Review(createTestConfig())
+	assert.True(t, review.RequestsName)
+	assert.True(t, review.RequestsEmail)
+	assert.Equal(t, []lti.Variable{lti.VariablePersonNameFull, lti.VariablePersonEmailPrimary, lti.VariableUserUsername}, review.PersonalDataVariables)
+}
+
+func TestRegression_UnusableMessageIconIsDropped(t *testing.T) {
+	t.Parallel()
+
+	body := createTestRegistrationJSON()
+	toolConfiguration(body)["messages"] = []any{
+		map[string]any{"type": "LtiResourceLinkRequest", "icon_uri": "javascript:alert(document.domain)"},
+		map[string]any{"type": "LtiDeepLinkingRequest", "icon_uri": "https://client.example.org/icon.png"},
+	}
+
+	reg, err := ParseRegistration(encodeRegistration(t, body))
+	require.NoError(t, err)
+
+	assert.Empty(t, reg.ToolConfiguration.Messages[0].IconURI)
+	assert.Equal(t, "https://client.example.org/icon.png", reg.ToolConfiguration.Messages[1].IconURI)
 }
 
 func TestParseRegistration_RejectsABodyOver1MiB(t *testing.T) {

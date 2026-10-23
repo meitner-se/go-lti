@@ -1,5 +1,5 @@
 {
-  "description": "The registration request example from LTI Dynamic Registration 1.0 §3.5.1, with a Swedish instead of a Japanese client_name.",
+  "description": "A domain that is a public suffix. The spec doesn't forbid it, so it is accepted, but the review lists it: it covers sites run by others.",
   "request": {
     "application_type": "web",
     "response_types": [
@@ -28,7 +28,7 @@
     ],
     "scope": "https://purl.imsglobal.org/spec/lti-ags/scope/score https://purl.imsglobal.org/spec/lti-nrps/scope/contextmembership.readonly",
     "https://purl.imsglobal.org/spec/lti-tool-configuration": {
-      "domain": "client.example.org",
+      "domain": "github.io",
       "description": "Learn botany by tending to your little (virtual) garden.",
       "target_link_uri": "https://client.example.org/lti",
       "custom_parameters": {
@@ -53,12 +53,21 @@
   "valid": true,
   "expect": {
     "domains": [
-      "client.example.org"
+      "github.io"
     ],
     "requests_name": true,
     "requests_email": false,
     "client_names": {
       "sv": "Virtuell trädgård"
-    }
+    },
+    "off_domain_uris": [
+      "https://client.example.org/lti",
+      "https://client.example.org/callback",
+      "https://client.example.org/callback2",
+      "https://client.example.org/lti/dl"
+    ],
+    "public_suffix_domains": [
+      "github.io"
+    ]
   }
 }
