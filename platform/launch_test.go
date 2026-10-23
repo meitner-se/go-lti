@@ -1,6 +1,7 @@
 package platform
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -89,6 +90,15 @@ func createTestLauncher(t *testing.T, key lti.SigningKey) *Launcher {
 	require.NoError(t, err)
 
 	return launcher
+}
+
+func newTestFetcher(t *testing.T, client *http.Client) *jwks.Fetcher {
+	t.Helper()
+
+	fetcher, err := jwks.NewFetcher(jwks.WithHTTPClient(client))
+	require.NoError(t, err)
+
+	return fetcher
 }
 
 func claimsJSON(t *testing.T, claims map[string]any) string {
@@ -364,7 +374,6 @@ func TestLauncher_IDTokenClaims_RejectsIncompleteDeepLinking(t *testing.T) {
 		{name: "no return url anywhere", platform: func(cfg *Config) { cfg.Endpoints.DeepLinkReturn = "" }},
 		{name: "an http return url", settings: func(s *lti.DeepLinkingSettings) { s.ReturnURL = "http://platform.example.com/lti/deep-link-return" }},
 		{name: "no accepted types", settings: func(s *lti.DeepLinkingSettings) { s.AcceptTypes = nil }},
-		{name: "no accepted document targets", settings: func(s *lti.DeepLinkingSettings) { s.AcceptPresentationDocumentTargets = nil }},
 	}
 
 	for _, tt := range tests {
@@ -426,7 +435,7 @@ func TestLauncher_IDToken_VerifiesAgainstThePublishedJWKS(t *testing.T) {
 	require.NoError(t, err)
 
 	// Verify as a tool would: fetch the platform's JWKS and check the token against it.
-	fetcher := jwks.NewFetcher(jwks.WithHTTPClient(server.Client()))
+	fetcher := newTestFetcher(t, server.Client())
 	claims := jwt.MapClaims{}
 	token, err := jwt.ParseWithClaims(idToken, claims, func(token *jwt.Token) (any, error) {
 		kid, _ := token.Header["kid"].(string)
@@ -455,7 +464,7 @@ func TestLauncher_IDToken_DoesNotVerifyAgainstAnotherKey(t *testing.T) {
 	idToken, err := launcher.idToken(t.Context(), createTestTool(), "nonce-1", createTestResourceLinkRequest())
 	require.NoError(t, err)
 
-	fetcher := jwks.NewFetcher(jwks.WithHTTPClient(server.Client()))
+	fetcher := newTestFetcher(t, server.Client())
 	_, err = jwt.Parse(idToken, func(token *jwt.Token) (any, error) {
 		kid, _ := token.Header["kid"].(string)
 
@@ -472,3 +481,58 @@ func mustJSON(t *testing.T, v any) []byte {
 
 	return body
 }
+
+func TestRegression_ExtensionsCantSetReservedClaimsTheMessageLeavesOut(t *testing.T) {
+	t.Parallel()
+
+	launcher := createTestLauncher(t, ltitest.NewSigningKey(t))
+
+	for _, name := range []string{lti.ClaimContext, lti.ClaimCustom, lti.ClaimLaunchPresentation, lti.ClaimDeepLinkingSettings} {
+		msg := createTestResourceLinkRequest()
+		msg.Context = nil
+		msg.Custom = nil
+		msg.Presentation = lti.Presentation{}
+		msg.Extensions = []lti.Claim{testNamedClaim{name: name}}
+
+		_, err := launcher.idTokenClaims(createTestTool(), "nonce-1", msg, testNow)
+		require.Error(t, err, name)
+	}
+}
+
+func TestRegression_NilExtensionIsAnError(t *testing.T) {
+	t.Parallel()
+
+	launcher := createTestLauncher(t, ltitest.NewSigningKey(t))
+
+	msg := createTestResourceLinkRequest()
+	msg.Extensions = []lti.Claim{nil}
+
+	_, err := launcher.idTokenClaims(createTestTool(), "nonce-1", msg, testNow)
+	require.Error(t, err)
+}
+
+func TestRegression_JWKSRefusesKeysWithoutKidOrPublicKey(t *testing.T) {
+	t.Parallel()
+
+	signing := ltitest.NewSigningKey(t)
+
+	for name, published := range map[string][]jwks.Key{
+		"no kid":        {{PublicKey: ltitest.PublicKey(t, signing).PublicKey}},
+		"no public key": {{ID: "kid-1"}},
+	} {
+		launcher, err := NewLauncher(createTestConfig(), &mockKeys{signing: signing, public: published})
+		require.NoError(t, err)
+
+		_, err = launcher.JWKS(t.Context())
+		require.Error(t, err, name)
+	}
+}
+
+type mockKeys struct {
+	signing lti.SigningKey
+	public  []jwks.Key
+}
+
+func (m *mockKeys) SigningKey(context.Context) (lti.SigningKey, error) { return m.signing, nil }
+
+func (m *mockKeys) PublicKeys(context.Context) ([]jwks.Key, error) { return m.public, nil }

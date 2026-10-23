@@ -51,3 +51,14 @@ func TestConfig_Validate_OptionalEndpoints(t *testing.T) {
 
 	require.NoError(t, cfg.Validate())
 }
+
+func TestRegression_IssuerHasNoQueryOrFragment(t *testing.T) {
+	t.Parallel()
+
+	for _, issuer := range []string{"https://platform.example.com/lti?x=1", "https://platform.example.com/lti#frag", "https://platform.example.com/lti?"} {
+		cfg := createTestConfig()
+		cfg.Issuer = issuer
+
+		require.Error(t, cfg.Validate(), issuer)
+	}
+}

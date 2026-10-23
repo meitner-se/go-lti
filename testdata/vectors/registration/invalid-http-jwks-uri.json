@@ -51,5 +51,6 @@
     }
   },
   "valid": false,
-  "error_code": "invalid_client_metadata"
+  "error_code": "invalid_client_metadata",
+  "error_description": "jwks_uri must be an absolute https url"
 }

@@ -3,6 +3,7 @@ package platform
 import (
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/meitner-se/go-lti"
 	"github.com/meitner-se/go-lti/internal/urlcheck"
@@ -36,7 +37,7 @@ type Endpoints struct {
 	DeepLinkReturn string
 }
 
-// Product is the platform's product (LTI 1.3 §5.4.3).
+// Product is the platform's product (LTI 1.3 §5.4.2).
 type Product struct {
 	// GUID identifies this platform instance to tools, stable for the issuer. At most 255 characters.
 	GUID         string
@@ -50,8 +51,9 @@ type Product struct {
 // Validate checks that the issuer, the authorization and JWKS endpoints and the product GUID are
 // set, and that every endpoint is an absolute https URL.
 func (c Config) Validate() error {
-	if !urlcheck.IsHTTPS(c.Issuer) {
-		return errors.New("lti: config issuer must be an absolute https url")
+	// Security Framework §5.1.2: the issuer is an https URL with no query or fragment.
+	if u, ok := urlcheck.ParseHTTPS(c.Issuer); !ok || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" || strings.Contains(c.Issuer, "#") {
+		return errors.New("lti: config issuer must be an absolute https url without a query or fragment")
 	}
 
 	required := map[string]string{"authorization": c.Endpoints.Authorization, "jwks": c.Endpoints.JWKS}

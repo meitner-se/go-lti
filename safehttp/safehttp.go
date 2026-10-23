@@ -30,21 +30,27 @@ var (
 	ErrTooManyRedirects = errors.New("safehttp: too many redirects")
 )
 
-// blockedPrefixes are special-purpose ranges that netip's predicates don't cover (RFC 6890).
+// ipv6GlobalUnicast is the only IPv6 range with public unicast addresses (RFC 4291 §2.4). Everything
+// outside it, such as site-local fec0::/10, IPv4-compatible ::/96 and IPv4-translated
+// ::ffff:0:0:0/96, is refused.
+var ipv6GlobalUnicast = netip.MustParsePrefix("2000::/3")
+
+// blockedPrefixes are special-purpose ranges that netip's predicates and ipv6GlobalUnicast don't
+// cover (RFC 6890).
 var blockedPrefixes = []netip.Prefix{
 	netip.MustParsePrefix("0.0.0.0/8"),       // "this network"
 	netip.MustParsePrefix("100.64.0.0/10"),   // carrier-grade NAT
 	netip.MustParsePrefix("192.0.0.0/24"),    // IETF protocol assignments
 	netip.MustParsePrefix("192.0.2.0/24"),    // documentation
+	netip.MustParsePrefix("192.88.99.0/24"),  // 6to4 relay anycast
 	netip.MustParsePrefix("198.18.0.0/15"),   // benchmarking
 	netip.MustParsePrefix("198.51.100.0/24"), // documentation
 	netip.MustParsePrefix("203.0.113.0/24"),  // documentation
 	netip.MustParsePrefix("240.0.0.0/4"),     // reserved, including broadcast
-	netip.MustParsePrefix("64:ff9b::/96"),    // NAT64, which can embed a private IPv4 address
-	netip.MustParsePrefix("64:ff9b:1::/48"),  // local-use NAT64
-	netip.MustParsePrefix("100::/64"),        // discard
+	netip.MustParsePrefix("2001::/23"),       // IETF protocol assignments: Teredo, ORCHID, benchmarking
 	netip.MustParsePrefix("2001:db8::/32"),   // documentation
 	netip.MustParsePrefix("2002::/16"),       // 6to4, which can embed a private IPv4 address
+	netip.MustParsePrefix("3fff::/20"),       // documentation
 }
 
 // NewClient returns an HTTP client that guards against SSRF.
@@ -56,7 +62,8 @@ var blockedPrefixes = []netip.Prefix{
 // bounds the whole request including reading the body.
 //
 // Check the first URL with CheckURL before sending a request: the client checks the addresses it
-// dials and the redirects it follows, not the scheme of the request it is given.
+// dials and the redirects it follows, not the scheme of the request it is given. Pass a non-zero
+// timeout and cap the response body you read: the client limits neither on its own.
 func NewClient(timeout time.Duration) *http.Client {
 	return newClient(timeout, func(addr netip.AddrPort) bool { return IsPublicAddr(addr.Addr()) })
 }
@@ -91,7 +98,7 @@ func newClient(timeout time.Duration, allowed func(netip.AddrPort) bool) *http.C
 			IdleConnTimeout:       90 * time.Second,
 		},
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			if len(via) >= maxRedirects {
+			if len(via) > maxRedirects {
 				return ErrTooManyRedirects
 			}
 
@@ -105,6 +112,10 @@ func IsPublicAddr(addr netip.Addr) bool {
 	addr = addr.Unmap()
 
 	if !addr.IsValid() || !addr.IsGlobalUnicast() || addr.IsPrivate() {
+		return false
+	}
+
+	if addr.Is6() && !ipv6GlobalUnicast.Contains(addr) {
 		return false
 	}
 

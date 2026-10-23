@@ -80,6 +80,13 @@ func (l *Launcher) JWKS(ctx context.Context) (jwks.Set, error) {
 		return jwks.Set{}, fmt.Errorf("lti: cannot list public keys: %w", err)
 	}
 
+	// Security Framework §6.3: every published key needs a kid.
+	for _, key := range keys {
+		if key.ID == "" || key.PublicKey == nil || key.PublicKey.N == nil {
+			return jwks.Set{}, errors.New("lti: a published key has no kid or no public key")
+		}
+	}
+
 	return jwks.NewSet(keys...), nil
 }
 
@@ -203,6 +210,10 @@ func (l *Launcher) idTokenClaims(tool Tool, nonce string, msg lti.Message, now t
 	}
 
 	for _, extension := range common.Extensions {
+		if extension == nil {
+			return nil, errors.New("lti: an extension claim is nil")
+		}
+
 		name := extension.ClaimName()
 		if !strings.Contains(name, "://") || reservedClaims[name] {
 			return nil, fmt.Errorf("lti: extension claim %q must be a fully qualified url that the package doesn't set", name)
@@ -230,6 +241,11 @@ func validateCommon(c lti.Common, targetLinkURI string) error {
 		return errors.New("lti: launch context needs an id of at most 255 characters")
 	}
 
+	// LTI 1.3 §5.4.4: return_url is a fully qualified https url.
+	if c.Presentation.ReturnURL != "" && !urlcheck.IsHTTPS(c.Presentation.ReturnURL) {
+		return errors.New("lti: launch presentation return_url must be an absolute https url")
+	}
+
 	switch c.Presentation.DocumentTarget {
 	case "", lti.DocumentTargetIframe, lti.DocumentTargetWindow:
 		return nil
@@ -238,7 +254,7 @@ func validateCommon(c lti.Common, targetLinkURI string) error {
 	}
 }
 
-//nolint:tagliatelle // LTI 1.3 §5.4.3 defines snake_case keys
+//nolint:tagliatelle // LTI 1.3 §5.4.2 defines snake_case keys
 type toolPlatform struct {
 	GUID              string `json:"guid"`
 	Name              string `json:"name,omitempty"`
@@ -284,14 +300,19 @@ func deepLinkingSettingsClaim(s lti.DeepLinkingSettings, defaultReturnURL string
 		return deepLinkingSettings{}, errors.New("lti: deep linking needs a return url, an absolute https url")
 	case len(s.AcceptTypes) == 0:
 		return deepLinkingSettings{}, errors.New("lti: deep linking needs at least one accepted type")
-	case len(s.AcceptPresentationDocumentTargets) == 0:
-		return deepLinkingSettings{}, errors.New("lti: deep linking needs at least one accepted document target")
+	}
+
+	// Deep Linking 2.0 §4.4.1 requires the member, but it may be empty: §4.6.2 maps Deep Linking
+	// 1.0's "none" to an empty array.
+	targets := s.AcceptPresentationDocumentTargets
+	if targets == nil {
+		targets = []lti.DocumentTarget{}
 	}
 
 	return deepLinkingSettings{
 		DeepLinkReturnURL:                 returnURL,
 		AcceptTypes:                       s.AcceptTypes,
-		AcceptPresentationDocumentTargets: s.AcceptPresentationDocumentTargets,
+		AcceptPresentationDocumentTargets: targets,
 		AcceptMediaTypes:                  strings.Join(s.AcceptMediaTypes, ","),
 		AcceptMultiple:                    s.AcceptMultiple,
 		AcceptLineItem:                    s.AcceptLineItem,

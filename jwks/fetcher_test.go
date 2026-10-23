@@ -87,13 +87,18 @@ func (c *testClock) Advance(d time.Duration) {
 	c.now = c.now.Add(d)
 }
 
-func createTestFetcher(server *testJWKSServer, clock *testClock) *Fetcher {
-	return NewFetcher(
+func createTestFetcher(t *testing.T, server *testJWKSServer, clock *testClock, opts ...Option) *Fetcher {
+	t.Helper()
+
+	fetcher, err := NewFetcher(append([]Option{
 		WithHTTPClient(server.Client()),
 		WithClock(clock.Now),
-		WithTTL(15*time.Minute),
-		WithRefetchInterval(30*time.Second),
-	)
+		WithTTL(15 * time.Minute),
+		WithRefetchInterval(30 * time.Second),
+	}, opts...)...)
+	require.NoError(t, err)
+
+	return fetcher
 }
 
 func createTestRSAKey(t *testing.T, kid string) (Key, *rsa.PrivateKey) {
@@ -123,7 +128,7 @@ func TestFetcher_Key_CachesTheSet(t *testing.T) {
 	key, _ := createTestRSAKey(t, "kid-1")
 	server := createTestJWKSServer(t, key)
 	clock := &testClock{now: time.Now()}
-	fetcher := createTestFetcher(server, clock)
+	fetcher := createTestFetcher(t, server, clock)
 
 	for range 3 {
 		got, err := fetcher.Key(t.Context(), server.URL, "kid-1")
@@ -140,7 +145,7 @@ func TestFetcher_Key_RefetchesAfterTheTTL(t *testing.T) {
 	key, _ := createTestRSAKey(t, "kid-1")
 	server := createTestJWKSServer(t, key)
 	clock := &testClock{now: time.Now()}
-	fetcher := createTestFetcher(server, clock)
+	fetcher := createTestFetcher(t, server, clock)
 
 	_, err := fetcher.Key(t.Context(), server.URL, "kid-1")
 	require.NoError(t, err)
@@ -160,7 +165,7 @@ func TestFetcher_Key_RefetchesOnAnUnknownKid(t *testing.T) {
 	newKey, _ := createTestRSAKey(t, "new")
 	server := createTestJWKSServer(t, oldKey)
 	clock := &testClock{now: time.Now()}
-	fetcher := createTestFetcher(server, clock)
+	fetcher := createTestFetcher(t, server, clock)
 
 	_, err := fetcher.Key(t.Context(), server.URL, "old")
 	require.NoError(t, err)
@@ -181,7 +186,7 @@ func TestFetcher_Key_LimitsRefetchesForUnknownKids(t *testing.T) {
 	key, _ := createTestRSAKey(t, "kid-1")
 	server := createTestJWKSServer(t, key)
 	clock := &testClock{now: time.Now()}
-	fetcher := createTestFetcher(server, clock)
+	fetcher := createTestFetcher(t, server, clock)
 
 	_, err := fetcher.Key(t.Context(), server.URL, "kid-1")
 	require.NoError(t, err)
@@ -210,7 +215,7 @@ func TestFetcher_Key_EmptyKid(t *testing.T) {
 		t.Parallel()
 
 		server := createTestJWKSServer(t, first)
-		fetcher := createTestFetcher(server, &testClock{now: time.Now()})
+		fetcher := createTestFetcher(t, server, &testClock{now: time.Now()})
 
 		got, err := fetcher.Key(t.Context(), server.URL, "")
 		require.NoError(t, err)
@@ -221,7 +226,7 @@ func TestFetcher_Key_EmptyKid(t *testing.T) {
 		t.Parallel()
 
 		server := createTestJWKSServer(t, first, second)
-		fetcher := createTestFetcher(server, &testClock{now: time.Now()})
+		fetcher := createTestFetcher(t, server, &testClock{now: time.Now()})
 
 		_, err := fetcher.Key(t.Context(), server.URL, "")
 		require.ErrorIs(t, err, ErrKeyNotFound)
@@ -235,7 +240,7 @@ func TestFetcher_Key_BacksOffAfterAFailedFetch(t *testing.T) {
 	server := createTestJWKSServer(t, key)
 	server.setResponse(http.StatusServiceUnavailable, nil)
 	clock := &testClock{now: time.Now()}
-	fetcher := createTestFetcher(server, clock)
+	fetcher := createTestFetcher(t, server, clock)
 
 	for range 3 {
 		_, err := fetcher.Key(t.Context(), server.URL, "kid-1")
@@ -259,7 +264,7 @@ func TestFetcher_Key_DoesNotUseStaleKeysWhenARefetchFails(t *testing.T) {
 	key, _ := createTestRSAKey(t, "kid-1")
 	server := createTestJWKSServer(t, key)
 	clock := &testClock{now: time.Now()}
-	fetcher := createTestFetcher(server, clock)
+	fetcher := createTestFetcher(t, server, clock)
 
 	_, err := fetcher.Key(t.Context(), server.URL, "kid-1")
 	require.NoError(t, err)
@@ -293,7 +298,7 @@ func TestFetcher_Key_Rejects(t *testing.T) {
 
 			server := createTestJWKSServer(t, key)
 			server.setResponse(tt.status, tt.body)
-			fetcher := createTestFetcher(server, &testClock{now: time.Now()})
+			fetcher := createTestFetcher(t, server, &testClock{now: time.Now()})
 
 			_, err := fetcher.Key(t.Context(), server.URL, "kid-1")
 			require.Error(t, err)
@@ -305,7 +310,8 @@ func TestFetcher_Key_Rejects(t *testing.T) {
 func TestFetcher_Key_RejectsNonHTTPSURLs(t *testing.T) {
 	t.Parallel()
 
-	fetcher := NewFetcher()
+	fetcher, err := NewFetcher()
+	require.NoError(t, err)
 
 	for _, raw := range []string{"http://tool.example.com/jwks", "ftp://tool.example.com/jwks", "not a url", ""} {
 		_, err := fetcher.Key(t.Context(), raw, "kid-1")
@@ -319,11 +325,15 @@ func TestFetcher_Key_BoundsTheCache(t *testing.T) {
 
 	key, _ := createTestRSAKey(t, "kid-1")
 	server := createTestJWKSServer(t, key)
-	fetcher := NewFetcher(WithHTTPClient(server.Client()), WithMaxEntries(2))
+	clock := &testClock{now: time.Now()}
+	fetcher := createTestFetcher(t, server, clock, WithMaxEntries(2))
 
+	// Each lookup is a refetch interval after the last, so every earlier entry may be evicted.
 	for _, path := range []string{"/a", "/b", "/a", "/c", "/a", "/b"} {
 		_, err := fetcher.Key(t.Context(), server.URL+path, "kid-1")
 		require.NoError(t, err)
+
+		clock.Advance(31 * time.Second)
 	}
 
 	// /a stays cached because it was used most recently each time; /b was evicted by /c and refetched.
@@ -336,7 +346,7 @@ func TestFetcher_Key_ConcurrentLookupsShareOneFetch(t *testing.T) {
 
 	key, _ := createTestRSAKey(t, "kid-1")
 	server := createTestJWKSServer(t, key)
-	fetcher := createTestFetcher(server, &testClock{now: time.Now()})
+	fetcher := createTestFetcher(t, server, &testClock{now: time.Now()})
 
 	var wg sync.WaitGroup
 	for range 10 {

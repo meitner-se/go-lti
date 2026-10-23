@@ -51,5 +51,6 @@
   "iat_offset_seconds": 0,
   "exp_offset_seconds": 300,
   "valid": false,
-  "error_code": "invalid_request"
+  "error_code": "invalid_request",
+  "error_description": "not a valid jwt from the tool"
 }

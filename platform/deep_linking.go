@@ -1,12 +1,14 @@
 package platform
 
 import (
+	"bytes"
 	"context"
 	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -19,9 +21,15 @@ import (
 const (
 	// deepLinkingClockSkew is how far the tool's clock may be off from ours.
 	deepLinkingClockSkew = time.Minute
-	// maxDeepLinkingResponseLifetime bounds exp, and with it how long a nonce has to be remembered.
+	// maxDeepLinkingResponseLifetime bounds exp against iat, and with it how long a nonce has to be
+	// remembered.
 	maxDeepLinkingResponseLifetime = time.Hour
+	// maxNonceLength bounds what a tool can make the NonceStore keep.
+	maxNonceLength = 1024
 )
+
+// MaxDeepLinkingResponseBytes caps the size of a Deep Linking response JWT.
+const MaxDeepLinkingResponseBytes = 1 << 20
 
 // DeepLinkingVerifier verifies the LtiDeepLinkingResponse a tool posts back to the platform.
 type DeepLinkingVerifier struct {
@@ -46,7 +54,9 @@ func NewDeepLinkingVerifier(cfg Config, keys lti.KeySource, nonces lti.NonceStor
 	return &DeepLinkingVerifier{config: cfg, keys: keys, nonces: nonces, now: newOptions(opts).now}, nil
 }
 
-// DeepLinkingSession is what the platform sent in the LtiDeepLinkingRequest.
+// DeepLinkingSession is what the platform sent in the LtiDeepLinkingRequest. Load it from the
+// platform's own state for this browser, such as the record behind the session cookie, never from
+// the posted response: that is read before it is verified.
 type DeepLinkingSession struct {
 	Tool         Tool
 	DeploymentID string
@@ -71,11 +81,17 @@ type deepLinkingResponseClaims struct {
 
 // Verify checks the JWT a tool posted in the DeepLinkingResponseField and returns its content.
 //
-// The JWT must be signed with RS256 by a key in the tool's JWKS, issued by the tool's client_id to
-// the platform's issuer, unexpired, valid for at most an hour, with a fresh nonce, for the session's
-// deployment, and carry back the session's data unchanged. Its items must be of accepted types, at
-// most one unless the session accepted multiple, carry what their type requires, and have every URL
-// on the tool's domains. The nonce is claimed last, so a rejected response doesn't use it up.
+// The JWT must be signed with RS256 by a key in the tool's JWKS, without critical header extensions,
+// issued by the tool's client_id with the platform's issuer as its only audience, unexpired, valid
+// for at most an hour after iat, with a fresh nonce, for the session's deployment, and, when the
+// request sent data, carry it back unchanged. Its items must be of accepted types, at most one
+// unless the session accepted multiple, carry what Deep Linking 2.0 §3 requires for their type, and
+// have https URLs (LTI 1.3 §3.5). The nonce is claimed last, so a rejected response doesn't use it
+// up.
+//
+// Verify doesn't require items to be on the tool's domains, since the spec doesn't; OnToolDomains
+// checks that for a platform that wants it. It doesn't sanitize html or check media types or
+// presentation either: those are the platform's to decide.
 //
 // A rejection is an *lti.Error. Any other error, such as a tool JWKS that can't be fetched or a
 // nonce store failure, is the platform's.
@@ -83,12 +99,16 @@ func (v *DeepLinkingVerifier) Verify(ctx context.Context, rawJWT string, s DeepL
 	tool := s.Tool
 
 	// The jwt parser skips the iss check for an empty expected issuer, so an incomplete session fails closed.
-	if tool.ClientID == "" || tool.JWKSURI == "" || len(tool.Domains) == 0 || s.DeploymentID == "" {
-		return nil, errors.New("lti: deep linking session needs the tool's client_id, jwks_uri and domains, and the deployment_id")
+	if tool.ClientID == "" || s.DeploymentID == "" || !urlcheck.IsHTTPS(tool.JWKSURI) {
+		return nil, errors.New("lti: deep linking session needs the tool's client_id and https jwks_uri, and the deployment_id")
 	}
 
 	if rawJWT == "" {
 		return nil, reject("deep linking response is missing", nil)
+	}
+
+	if len(rawJWT) > MaxDeepLinkingResponseBytes {
+		return nil, reject("deep linking response is larger than 1 MiB", nil)
 	}
 
 	parser := jwt.NewParser(
@@ -105,12 +125,21 @@ func (v *DeepLinkingVerifier) Verify(ctx context.Context, rawJWT string, s DeepL
 
 	var claims deepLinkingResponseClaims
 	if _, err := parser.ParseWithClaims(rawJWT, &claims, func(token *jwt.Token) (any, error) {
+		// RFC 7515 §4.1.11: extensions listed in crit must be understood, and we understand none.
+		if _, ok := token.Header["crit"]; ok {
+			return nil, errCritical
+		}
+
 		kid := ""
 		if value, ok := token.Header["kid"].(string); ok {
 			kid = value
 		}
 
 		key, err := v.keys.Key(ctx, tool.JWKSURI, kid)
+		if err == nil && key == nil {
+			err = fmt.Errorf("lti: the key source returned no key: %w", jwks.ErrKeyNotFound)
+		}
+
 		keyErr = err
 
 		return key, err
@@ -122,14 +151,21 @@ func (v *DeepLinkingVerifier) Verify(ctx context.Context, rawJWT string, s DeepL
 		return nil, reject("deep linking response is not a valid jwt from the tool", err)
 	}
 
+	// Security Framework §5.2.3: reject a JWT whose audiences include any we don't trust.
+	for _, audience := range claims.Audience {
+		if audience != v.config.Issuer {
+			return nil, reject("deep linking response has an audience other than the platform", nil)
+		}
+	}
+
 	if claims.IssuedAt == nil {
 		return nil, reject("deep linking response has no iat", nil)
 	}
 
-	// Bounding exp against iat too keeps an old response with a fresh-looking exp out.
+	// iat may be at most the clock skew ahead, so this also bounds exp to an hour and the skew from now.
 	expiresAt := claims.ExpiresAt.Time
-	if expiresAt.After(v.now().Add(maxDeepLinkingResponseLifetime)) || expiresAt.Sub(claims.IssuedAt.Time) > maxDeepLinkingResponseLifetime {
-		return nil, reject("deep linking response is valid for more than an hour", nil)
+	if lifetime := expiresAt.Sub(claims.IssuedAt.Time); lifetime < 0 || lifetime > maxDeepLinkingResponseLifetime {
+		return nil, reject("deep linking response is valid for more than an hour, or expires before it is issued", nil)
 	}
 
 	if claims.MessageType != string(lti.MessageTypeDeepLinkingResponse) {
@@ -144,17 +180,18 @@ func (v *DeepLinkingVerifier) Verify(ctx context.Context, rawJWT string, s DeepL
 		return nil, reject("deep linking response has the wrong deployment_id", nil)
 	}
 
-	if subtle.ConstantTimeCompare([]byte(claims.Data), []byte(s.Settings.Data)) != 1 {
+	// Deep Linking 2.0 §4.5.5: data must come back when the request sent it. Without it, there's nothing to match.
+	if s.Settings.Data != "" && subtle.ConstantTimeCompare([]byte(claims.Data), []byte(s.Settings.Data)) != 1 {
 		return nil, reject("deep linking response data does not match the request", nil)
 	}
 
-	items, err := parseContentItems(claims.ContentItems, tool.Domains, s.Settings)
+	items, err := parseContentItems(claims.ContentItems, s.Settings)
 	if err != nil {
 		return nil, err
 	}
 
-	if claims.Nonce == "" {
-		return nil, reject("deep linking response has no nonce", nil)
+	if claims.Nonce == "" || len(claims.Nonce) > maxNonceLength {
+		return nil, reject("deep linking response has no nonce, or one over 1 KiB", nil)
 	}
 
 	fresh, err := v.nonces.Claim(ctx, tool.ClientID, claims.Nonce, expiresAt.Add(deepLinkingClockSkew))
@@ -175,13 +212,28 @@ func (v *DeepLinkingVerifier) Verify(ctx context.Context, rawJWT string, s DeepL
 	}, nil
 }
 
-func parseContentItems(raw []json.RawMessage, domains []string, settings lti.DeepLinkingSettings) ([]lti.ContentItem, error) {
+// OnToolDomains reports whether rawURL is an https URL on one of the tool's domains or a subdomain
+// of one, for a platform that only places content from the tool itself. Domains that are public
+// suffixes never match.
+func OnToolDomains(tool Tool, rawURL string) bool {
+	return urlcheck.OnDomains(rawURL, tool.Domains)
+}
+
+var errCritical = errors.New("lti: the jwt has critical header extensions")
+
+func parseContentItems(raw []json.RawMessage, settings lti.DeepLinkingSettings) ([]lti.ContentItem, error) {
 	if len(raw) > 1 && !settings.AcceptMultiple {
 		return nil, reject("deep linking response has more than one item but the request accepted one", nil)
 	}
 
 	items := make([]lti.ContentItem, 0, len(raw))
 	for _, r := range raw {
+		// Go matches JSON keys case-insensitively, so {"url":a,"URL":b} would validate one and keep the
+		// other in Raw. Refuse keys that collide instead.
+		if err := checkKeys(r); err != nil {
+			return nil, reject("deep linking response has a content item with duplicate or case-colliding keys", err)
+		}
+
 		var item lti.ContentItem
 		if err := json.Unmarshal(r, &item); err != nil {
 			return nil, reject("deep linking response has a malformed content item", err)
@@ -193,13 +245,14 @@ func parseContentItems(raw []json.RawMessage, domains []string, settings lti.Dee
 			return nil, reject("deep linking response has a content item of a type the request didn't accept", nil)
 		}
 
-		if err := validateRequired(item); err != nil {
+		if err := validateRequired(item, r); err != nil {
 			return nil, err
 		}
 
+		// LTI 1.3 §3.5: all URLs to resources included in messages must use https.
 		for _, u := range itemURLs(item) {
-			if !urlcheck.OnDomains(u, domains) {
-				return nil, reject("deep linking response has a content item url that isn't https on the tool's domain", nil)
+			if !urlcheck.IsHTTPS(u) {
+				return nil, reject("deep linking response has a content item url that isn't https", nil)
 			}
 		}
 
@@ -211,7 +264,8 @@ func parseContentItems(raw []json.RawMessage, domains []string, settings lti.Dee
 
 // validateRequired checks the properties Deep Linking 2.0 §3 requires for the item's type. An
 // ltiResourceLink may leave out url, since it then launches the tool's registered target link URI.
-func validateRequired(item lti.ContentItem) error {
+// Items of types the spec doesn't define have no required properties.
+func validateRequired(item lti.ContentItem, raw json.RawMessage) error {
 	switch item.Type {
 	case lti.ContentItemTypeLink, lti.ContentItemTypeFile, lti.ContentItemTypeImage:
 		if item.URL == "" {
@@ -222,6 +276,52 @@ func validateRequired(item lti.ContentItem) error {
 			return reject("deep linking response has an html content item without html", nil)
 		}
 	case lti.ContentItemTypeLTIResourceLink:
+		if err := validateResourceLink(raw); err != nil {
+			return err
+		}
+	}
+
+	if item.Type == lti.ContentItemTypeLink {
+		// §3.1: an iframe needs its src, and an embed its html.
+		if item.Iframe != nil && item.Iframe.Src == "" {
+			return reject("deep linking response has a link whose iframe has no src", nil)
+		}
+
+		if item.Embed != nil && item.Embed.HTML == "" {
+			return reject("deep linking response has a link whose embed has no html", nil)
+		}
+	}
+
+	for _, image := range []*lti.Image{item.Icon, item.Thumbnail} {
+		if image != nil && image.URL == "" {
+			return reject("deep linking response has an icon or thumbnail without a url", nil)
+		}
+	}
+
+	return nil
+}
+
+// validateResourceLink checks an ltiResourceLink's custom values and line item (Deep Linking 2.0 §3.2).
+func validateResourceLink(raw json.RawMessage) error {
+	var probe struct {
+		Custom   map[string]*string `json:"custom"`
+		LineItem *struct {
+			ScoreMaximum *float64 `json:"scoreMaximum"`
+		} `json:"lineItem"`
+	}
+
+	if err := json.Unmarshal(raw, &probe); err != nil {
+		return reject("deep linking response has a malformed ltiResourceLink", err)
+	}
+
+	for _, value := range probe.Custom {
+		if value == nil {
+			return reject("deep linking response has a custom parameter that is null, not a string", nil)
+		}
+	}
+
+	if probe.LineItem != nil && (probe.LineItem.ScoreMaximum == nil || *probe.LineItem.ScoreMaximum <= 0) {
+		return reject("deep linking response has a line item without a positive scoreMaximum", nil)
 	}
 
 	return nil
@@ -248,6 +348,73 @@ func itemURLs(item lti.ContentItem) []string {
 	}
 
 	return urls
+}
+
+// checkKeys refuses a JSON value with an object that repeats a key, or, for the objects Go decodes
+// into structs (the item and its icon, thumbnail, window, iframe and embed), has two keys that
+// differ only in case.
+func checkKeys(raw json.RawMessage) error {
+	dec := json.NewDecoder(bytes.NewReader(raw))
+
+	return walkKeys(dec, true)
+}
+
+var foldedMembers = map[string]bool{"icon": true, "thumbnail": true, "window": true, "iframe": true, "embed": true}
+
+func walkKeys(dec *json.Decoder, fold bool) error {
+	token, err := dec.Token()
+	if err != nil {
+		return err
+	}
+
+	delim, ok := token.(json.Delim)
+	if !ok {
+		return nil
+	}
+
+	switch delim {
+	case '[':
+		for dec.More() {
+			if err := walkKeys(dec, false); err != nil {
+				return err
+			}
+		}
+	case '{':
+		seen := map[string]bool{}
+
+		for dec.More() {
+			keyToken, err := dec.Token()
+			if err != nil {
+				return err
+			}
+
+			key, ok := keyToken.(string)
+			if !ok {
+				return errors.New("lti: object key is not a string")
+			}
+
+			seenKey := key
+			if fold {
+				seenKey = strings.ToLower(key)
+			}
+
+			if seen[seenKey] {
+				return fmt.Errorf("lti: key %q appears more than once", key)
+			}
+
+			seen[seenKey] = true
+
+			if err := walkKeys(dec, fold && foldedMembers[strings.ToLower(key)]); err != nil {
+				return err
+			}
+		}
+	default:
+		return nil
+	}
+
+	_, err = dec.Token()
+
+	return err
 }
 
 func reject(description string, cause error) *lti.Error {

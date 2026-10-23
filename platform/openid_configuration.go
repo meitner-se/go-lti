@@ -7,7 +7,7 @@ import (
 )
 
 // OpenIDConfiguration is the platform's OpenID configuration document, which Dynamic Registration
-// hands to the tool (LTI Dynamic Registration 1.0 §3.4.1).
+// hands to the tool (LTI Dynamic Registration 1.0 §2.1.1).
 //
 //nolint:tagliatelle // OpenID Connect Discovery 1.0 §3 defines snake_case keys
 type OpenIDConfiguration struct {
@@ -26,7 +26,7 @@ type OpenIDConfiguration struct {
 	PlatformConfiguration                      PlatformConfiguration `json:"https://purl.imsglobal.org/spec/lti-platform-configuration"`
 }
 
-// PlatformConfiguration is the LTI part of the OpenID configuration (LTI Dynamic Registration 1.0 §3.4.2).
+// PlatformConfiguration is the LTI part of the OpenID configuration (LTI Dynamic Registration 1.0 §2.1.2).
 //
 //nolint:tagliatelle // LTI Dynamic Registration 1.0 defines snake_case keys
 type PlatformConfiguration struct {
@@ -42,7 +42,8 @@ type SupportedMessage struct {
 }
 
 // OpenIDConfiguration returns the platform's OpenID configuration document. It fails when the
-// config is invalid or has no registration or token endpoint, which Dynamic Registration requires.
+// config is invalid, or lacks what Dynamic Registration requires: registration and token
+// endpoints, and the product's family code and version.
 func (c Config) OpenIDConfiguration() (OpenIDConfiguration, error) {
 	if err := c.Validate(); err != nil {
 		return OpenIDConfiguration{}, err
@@ -50,6 +51,11 @@ func (c Config) OpenIDConfiguration() (OpenIDConfiguration, error) {
 
 	if c.Endpoints.Registration == "" || c.Endpoints.Token == "" {
 		return OpenIDConfiguration{}, errors.New("lti: the openid configuration needs registration and token endpoints")
+	}
+
+	// Dynamic Registration §2.1.2 requires both in the platform configuration.
+	if c.Product.FamilyCode == "" || c.Product.Version == "" {
+		return OpenIDConfiguration{}, errors.New("lti: the openid configuration needs the product's family code and version")
 	}
 
 	scopes := []string{"openid"}

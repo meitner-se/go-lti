@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"sync"
 	"time"
 
 	"github.com/meitner-se/go-lti"
@@ -161,13 +162,19 @@ func ExampleConfig_OpenIDConfiguration() {
 
 // A tool posts its Deep Linking response to the platform's return URL.
 func Example_deepLinking() {
-	verifier, err := platform.NewDeepLinkingVerifier(exampleConfig, jwks.NewFetcher(), exampleNonceStore{})
+	fetcher, err := jwks.NewFetcher()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	verifier, err := platform.NewDeepLinkingVerifier(exampleConfig, fetcher, &exampleNonceStore{used: map[string]time.Time{}})
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	http.HandleFunc("POST /lti/deep-link-return", func(w http.ResponseWriter, r *http.Request) {
-		// Look up what the platform sent in the request, such as by its data claim.
+		// Load what the platform sent from its own state for this browser, such as the record behind
+		// the session cookie. Never look it up from the posted JWT: that is read before it is verified.
 		session := platform.DeepLinkingSession{
 			Tool: platform.Tool{
 				ClientID: "client-1",
@@ -199,9 +206,23 @@ func Example_deepLinking() {
 	})
 }
 
-// exampleNonceStore stands in for a store shared by every replica, such as a table or Redis.
-type exampleNonceStore struct{}
+// exampleNonceStore keeps used nonces in memory. A real platform keeps them where every replica
+// can see them, such as a table or Redis, until they expire.
+type exampleNonceStore struct {
+	mu   sync.Mutex
+	used map[string]time.Time
+}
 
-func (exampleNonceStore) Claim(context.Context, string, string, time.Time) (bool, error) {
+func (s *exampleNonceStore) Claim(_ context.Context, issuer, nonce string, expiresAt time.Time) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	key := issuer + "\x00" + nonce
+	if until, ok := s.used[key]; ok && time.Now().Before(until) {
+		return false, nil
+	}
+
+	s.used[key] = expiresAt
+
 	return true, nil
 }

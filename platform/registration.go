@@ -3,6 +3,8 @@ package platform
 import (
 	"encoding/json"
 	"errors"
+	"maps"
+	"net/url"
 	"slices"
 	"strings"
 
@@ -20,7 +22,7 @@ var (
 )
 
 // Registration is a tool's Dynamic Registration request: OpenID Connect client metadata with the
-// LTI tool configuration (LTI Dynamic Registration 1.0 §3.1).
+// LTI tool configuration (LTI Dynamic Registration 1.0 §2.2.1 and §3.5.2).
 //
 //nolint:tagliatelle // RFC 7591 and LTI Dynamic Registration 1.0 define snake_case keys
 type Registration struct {
@@ -43,7 +45,7 @@ type Registration struct {
 	ToolConfiguration       ToolConfiguration `json:"https://purl.imsglobal.org/spec/lti-tool-configuration"`
 }
 
-// ToolConfiguration is the LTI part of a registration (LTI Dynamic Registration 1.0 §3.2).
+// ToolConfiguration is the LTI part of a registration (LTI Dynamic Registration 1.0 §2.2.2).
 //
 //nolint:tagliatelle // LTI Dynamic Registration 1.0 defines snake_case keys
 type ToolConfiguration struct {
@@ -57,7 +59,7 @@ type ToolConfiguration struct {
 	Claims           []string          `json:"claims,omitempty"`
 }
 
-// ToolMessage is a message type the tool supports, and where it wants it (LTI Dynamic Registration 1.0 §3.2.1).
+// ToolMessage is a message type the tool supports, and where it wants it (LTI Dynamic Registration 1.0 §2.2.3).
 //
 //nolint:tagliatelle // LTI Dynamic Registration 1.0 defines snake_case keys
 type ToolMessage struct {
@@ -127,11 +129,16 @@ func RegistrationInitiationURL(toolRegistrationURL, openIDConfigurationURL, regi
 
 // ParseRegistration decodes and validates a tool's Dynamic Registration request.
 //
-// It checks the OpenID Connect metadata LTI requires (an id_token response type, implicit and
-// client_credentials grants, private_key_jwt client authentication), that the domains are host
-// names and not public suffixes, and that every URL the platform sends users or tokens to is https
-// on the tool's domain or secondary domains. The jwks_uri only has to be https. The optional
-// logo_uri, client_uri, policy_uri and tos_uri are dropped unless they are https.
+// It checks what LTI Dynamic Registration 1.0 §2.2 and OpenID Connect Registration require: an
+// id_token response type, implicit and client_credentials grants, private_key_jwt client
+// authentication, an https jwks_uri and initiate_login_uri, https redirect_uris without a fragment
+// or localhost, an https target_link_uri (LTI 1.3 §3.5), and a domain given as a host name without
+// a protocol. The optional logo_uri, client_uri, policy_uri, tos_uri and each message's icon_uri
+// are dropped unless they are https.
+//
+// It doesn't require the URIs to be on the tool's domains, since the spec doesn't; Review lists
+// the ones that aren't for the admin to judge. Note that the spec's own examples spell the grant
+// "implict", which is refused.
 //
 // A rejection is an *lti.Error with code invalid_redirect_uri or invalid_client_metadata
 // (RFC 7591 §3.2.2), whose description is safe to send to the tool.
@@ -159,7 +166,12 @@ func ParseRegistration(body []byte) (*Registration, error) {
 
 	// These are only shown to admins and stored with the tool; an unusable one is dropped rather
 	// than failing the registration.
-	for _, uri := range []*string{&reg.LogoURI, &reg.ClientURI, &reg.TOSURI, &reg.PolicyURI} {
+	uris := []*string{&reg.LogoURI, &reg.ClientURI, &reg.TOSURI, &reg.PolicyURI}
+	for i := range reg.ToolConfiguration.Messages {
+		uris = append(uris, &reg.ToolConfiguration.Messages[i].IconURI)
+	}
+
+	for _, uri := range uris {
 		if !urlcheck.IsHTTPS(*uri) {
 			*uri = ""
 		}
@@ -235,34 +247,37 @@ func (r *Registration) validate() error {
 	}
 
 	tool := r.ToolConfiguration
-	if !urlcheck.IsDomain(tool.Domain) {
-		return invalidMetadata("domain must be a host name such as tool.example.com", nil)
+
+	// Dynamic Registration §2.2.2: the domain is a host name, "protocol must not be included".
+	if !isHostName(tool.Domain) {
+		return invalidMetadata("domain must be a host name such as tool.example.com, without the protocol", nil)
 	}
 
 	for _, domain := range tool.SecondaryDomains {
-		if !urlcheck.IsDomain(domain) {
-			return invalidMetadata("secondary_domains must be host names such as tool.example.com", nil)
+		if !isHostName(domain) {
+			return invalidMetadata("secondary_domains must be host names such as tool.example.com, without the protocol", nil)
 		}
 	}
 
-	domains := r.Domains()
-
-	if !urlcheck.OnDomains(r.InitiateLoginURI, domains) {
-		return invalidMetadata("initiate_login_uri must be an https url on the tool's domain", nil)
+	if !urlcheck.IsHTTPS(r.InitiateLoginURI) {
+		return invalidMetadata("initiate_login_uri must be an absolute https url", nil)
 	}
 
 	if len(r.RedirectURIs) == 0 {
 		return lti.NewError(lti.ErrorInvalidRedirectURI, "redirect_uris must have at least one url", nil)
 	}
 
+	// OpenID Connect Registration §2: web clients using the implicit grant register only https
+	// redirect URIs and never localhost. RFC 6749 §3.1.2: no fragment.
 	for _, uri := range r.RedirectURIs {
-		if !urlcheck.OnDomains(uri, domains) || strings.Contains(uri, "#") {
-			return lti.NewError(lti.ErrorInvalidRedirectURI, "redirect_uris must be https urls on the tool's domain, without a fragment", nil)
+		u, ok := urlcheck.ParseHTTPS(uri)
+		if !ok || u.Fragment != "" || strings.Contains(uri, "#") || strings.EqualFold(u.Hostname(), "localhost") {
+			return lti.NewError(lti.ErrorInvalidRedirectURI, "redirect_uris must be https urls, without a fragment or localhost", nil)
 		}
 	}
 
-	if !urlcheck.OnDomains(tool.TargetLinkURI, domains) {
-		return invalidMetadata("target_link_uri must be an https url on the tool's domain", nil)
+	if !urlcheck.IsHTTPS(tool.TargetLinkURI) {
+		return invalidMetadata("target_link_uri must be an absolute https url", nil)
 	}
 
 	for _, message := range tool.Messages {
@@ -270,12 +285,23 @@ func (r *Registration) validate() error {
 			return invalidMetadata("every message must have a type", nil)
 		}
 
-		if message.TargetLinkURI != "" && !urlcheck.OnDomains(message.TargetLinkURI, domains) {
-			return invalidMetadata("a message's target_link_uri must be an https url on the tool's domain", nil)
+		if message.TargetLinkURI != "" && !urlcheck.IsHTTPS(message.TargetLinkURI) {
+			return invalidMetadata("a message's target_link_uri must be an absolute https url", nil)
 		}
 	}
 
 	return nil
+}
+
+// isHostName reports whether domain is a bare host name, with no scheme, path, port or wildcard.
+func isHostName(domain string) bool {
+	if domain == "" || strings.ContainsAny(domain, ":/?#@*") {
+		return false
+	}
+
+	u, err := url.Parse("https://" + domain)
+
+	return err == nil && u.Host == domain && urlcheck.IsHTTPS("https://"+domain)
 }
 
 func invalidMetadata(description string, cause error) *lti.Error {
@@ -299,13 +325,23 @@ type RegistrationReview struct {
 	Messages  []ReviewMessage
 	// RequestedClaims are the claims the tool asks to receive.
 	RequestedClaims []string
-	// RequestsName and RequestsEmail say whether the tool asks for the user's name or email address.
+	// RequestsName and RequestsEmail say whether the tool asks for the user's name or email address,
+	// in its claims or through custom parameter substitution.
 	RequestsName  bool
 	RequestsEmail bool
+	// PersonalDataVariables are the substitution variables about the user, such as
+	// $Person.email.primary, that the tool's or its messages' custom parameters ask for.
+	PersonalDataVariables []lti.Variable
 	// RequestedScopes are the service scopes the tool asks for; UnsupportedScopes are the ones the
 	// platform doesn't offer.
 	RequestedScopes   []lti.Scope
 	UnsupportedScopes []lti.Scope
+	// OffDomainURIs are the login, redirect and launch URIs that aren't on the tool's domain or
+	// secondary domains. The spec allows them, but they send users or tokens elsewhere.
+	OffDomainURIs []string
+	// PublicSuffixDomains are the domain and secondary domains that are public suffixes, such as
+	// github.io. They cover sites run by others, so OnToolDomains never matches them.
+	PublicSuffixDomains []string
 }
 
 // ReviewMessage is one message type the tool registered for.
@@ -335,6 +371,7 @@ func (r *Registration) Review(cfg Config) RegistrationReview {
 		})
 	}
 
+	variables := r.personalDataVariables()
 	scopes := r.Scopes()
 
 	var unsupported []lti.Scope
@@ -345,21 +382,24 @@ func (r *Registration) Review(cfg Config) RegistrationReview {
 	}
 
 	return RegistrationReview{
-		ClientName:        name,
-		ClientNames:       r.ClientNames,
-		Description:       r.ToolConfiguration.Description,
-		LogoURI:           r.LogoURI,
-		Domains:           r.Domains(),
-		Contacts:          r.Contacts,
-		ClientURI:         r.ClientURI,
-		TOSURI:            r.TOSURI,
-		PolicyURI:         r.PolicyURI,
-		Messages:          messages,
-		RequestedClaims:   r.ToolConfiguration.Claims,
-		RequestsName:      containsAny(r.ToolConfiguration.Claims, nameClaims),
-		RequestsEmail:     containsAny(r.ToolConfiguration.Claims, emailClaims),
-		RequestedScopes:   scopes,
-		UnsupportedScopes: unsupported,
+		ClientName:            name,
+		ClientNames:           r.ClientNames,
+		Description:           r.ToolConfiguration.Description,
+		LogoURI:               r.LogoURI,
+		Domains:               r.Domains(),
+		Contacts:              r.Contacts,
+		ClientURI:             r.ClientURI,
+		TOSURI:                r.TOSURI,
+		PolicyURI:             r.PolicyURI,
+		Messages:              messages,
+		RequestedClaims:       r.ToolConfiguration.Claims,
+		RequestsName:          containsAny(r.ToolConfiguration.Claims, nameClaims) || slices.ContainsFunc(variables, isNameVariable),
+		RequestsEmail:         containsAny(r.ToolConfiguration.Claims, emailClaims) || slices.ContainsFunc(variables, isEmailVariable),
+		PersonalDataVariables: variables,
+		RequestedScopes:       scopes,
+		UnsupportedScopes:     unsupported,
+		OffDomainURIs:         r.offDomainURIs(),
+		PublicSuffixDomains:   r.publicSuffixDomains(),
 	}
 }
 
@@ -374,7 +414,8 @@ type RegistrationGrant struct {
 	Claims []string
 }
 
-// RegistrationResponse is the client information response to a registration (RFC 7591 §3.2.1):
+// RegistrationResponse is the client information response to a registration (LTI Dynamic
+// Registration 1.0 §3.6.1, RFC 7591 §3.2.1):
 // the registered metadata with the tool's client_id and deployment_id.
 //
 //nolint:tagliatelle // RFC 7591 §3.2.1 defines snake_case keys
@@ -398,6 +439,72 @@ func (r *Registration) Response(grant RegistrationGrant) RegistrationResponse {
 	registered.ToolConfiguration.Claims = intersect(r.ToolConfiguration.Claims, grant.Claims)
 
 	return RegistrationResponse{ClientID: grant.ClientID, Registration: registered}
+}
+
+// personalDataVariables returns the $Person.* and $User.username variables in the tool's and its
+// messages' custom parameters, in order and without repeats (LTI 1.3 §5.4.6).
+func (r *Registration) personalDataVariables() []lti.Variable {
+	params := make([]map[string]string, 0, 1+len(r.ToolConfiguration.Messages))
+	params = append(params, r.ToolConfiguration.CustomParameters)
+
+	for _, message := range r.ToolConfiguration.Messages {
+		params = append(params, message.CustomParameters)
+	}
+
+	var variables []lti.Variable
+	for _, custom := range params {
+		for _, key := range slices.Sorted(maps.Keys(custom)) {
+			variable, ok := strings.CutPrefix(custom[key], "$")
+			if !ok || !isPersonalDataVariable(lti.Variable(variable)) || slices.Contains(variables, lti.Variable(variable)) {
+				continue
+			}
+
+			variables = append(variables, lti.Variable(variable))
+		}
+	}
+
+	return variables
+}
+
+func isPersonalDataVariable(v lti.Variable) bool {
+	return strings.HasPrefix(string(v), "Person.") || v == lti.VariableUserUsername
+}
+
+func isNameVariable(v lti.Variable) bool {
+	return strings.HasPrefix(string(v), "Person.name.") || v == lti.VariableUserUsername
+}
+
+func isEmailVariable(v lti.Variable) bool {
+	return strings.HasPrefix(string(v), "Person.email.")
+}
+
+func (r *Registration) offDomainURIs() []string {
+	uris := append([]string{r.InitiateLoginURI, r.ToolConfiguration.TargetLinkURI}, r.RedirectURIs...)
+	for _, message := range r.ToolConfiguration.Messages {
+		if message.TargetLinkURI != "" {
+			uris = append(uris, message.TargetLinkURI)
+		}
+	}
+
+	var off []string
+	for _, uri := range uris {
+		if !urlcheck.OnDomains(uri, r.Domains()) && !slices.Contains(off, uri) {
+			off = append(off, uri)
+		}
+	}
+
+	return off
+}
+
+func (r *Registration) publicSuffixDomains() []string {
+	var suffixes []string
+	for _, domain := range r.Domains() {
+		if urlcheck.IsPublicSuffix(domain) {
+			suffixes = append(suffixes, domain)
+		}
+	}
+
+	return suffixes
 }
 
 func containsAny(values, wanted []string) bool {

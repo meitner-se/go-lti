@@ -101,14 +101,17 @@ func NewJWKSServer(tb testing.TB, keys ...lti.SigningKey) *httptest.Server {
 	return server
 }
 
-// NonceStore is an in-memory lti.NonceStore. It forgets nothing, which suits a test.
+// NonceStore is an in-memory lti.NonceStore for tests. It never forgets and isn't shared between
+// processes, so it can't protect a real platform against replays.
 type NonceStore struct {
 	mu   sync.Mutex
 	used map[string]bool
 }
 
-// NewNonceStore returns an empty NonceStore.
-func NewNonceStore() *NonceStore {
+// NewNonceStore returns an empty NonceStore. It takes tb so that it is only made in tests.
+func NewNonceStore(tb testing.TB) *NonceStore {
+	tb.Helper()
+
 	return &NonceStore{used: map[string]bool{}}
 }
 

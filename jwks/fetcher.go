@@ -34,8 +34,12 @@ var ErrKeyNotFound = errors.New("jwks: no key matches the kid")
 // refetch, since that's how a tool rotates keys. Fetches for one URL happen at most once per
 // refetch interval, so tokens with made-up kids or a tool whose JWKS is down can't make the
 // Fetcher hammer it; a failed fetch is returned again until the interval has passed. Stale keys are
-// never used when a fetch fails. Concurrent lookups for the same URL share one fetch. The cache
-// holds a bounded number of URLs and drops the least recently used. It is safe for concurrent use.
+// never used when a fetch fails.
+//
+// Lookups for the same URL wait for one another and share one fetch; a waiting lookup gives up when
+// its context ends. The cache holds about WithMaxEntries URLs and drops the least recently used,
+// but never one fetched within the refetch interval, so cache churn can't bypass the rate limit.
+// It is safe for concurrent use.
 type Fetcher struct {
 	client          *http.Client
 	ttl             time.Duration
@@ -43,31 +47,37 @@ type Fetcher struct {
 	maxEntries      int
 	now             func() time.Time
 
-	mu      sync.Mutex
-	entries map[string]*list.Element
-	lru     *list.List // of *entry, most recently used first
+	mu       sync.Mutex
+	entries  map[string]*list.Element // of *entry
+	lru      *list.List               // of *entry, most recently used first
+	attempts map[string]attempt       // the last fetch per URL, which the rate limit reads
 }
 
 type entry struct {
 	url string
+	// lock is held while the entry is read or fetched. It is a channel so that a waiter can give up.
+	lock      chan struct{}
+	keys      []Key
+	fetchedAt time.Time
+}
 
-	mu          sync.Mutex
-	keys        []Key
-	fetchedAt   time.Time
-	attemptedAt time.Time
-	err         error
+type attempt struct {
+	at  time.Time
+	err error
 }
 
 // Option configures a Fetcher.
 type Option func(*Fetcher)
 
-// WithTTL sets how long a fetched set is used before it is fetched again. The default is 15 minutes.
+// WithTTL sets how long a fetched set is used before it is fetched again. It must be positive.
+// The default is 15 minutes.
 func WithTTL(ttl time.Duration) Option {
 	return func(f *Fetcher) { f.ttl = ttl }
 }
 
 // WithRefetchInterval sets how soon a URL may be fetched again after a fetch, for an unknown kid
-// or after a failure. The default is 30 seconds.
+// or after a failure. It must be positive, and is lowered to the TTL when longer. The default is
+// 30 seconds.
 func WithRefetchInterval(interval time.Duration) Option {
 	return func(f *Fetcher) { f.refetchInterval = interval }
 }
@@ -83,13 +93,15 @@ func WithHTTPClient(client *http.Client) Option {
 	return func(f *Fetcher) { f.client = client }
 }
 
-// WithMaxEntries bounds how many URLs the cache holds. The default is 1000.
+// WithMaxEntries sets how many URLs the cache holds, at least 1. URLs fetched within the refetch
+// interval are kept even beyond it. The default is 1000.
 func WithMaxEntries(n int) Option {
 	return func(f *Fetcher) { f.maxEntries = n }
 }
 
-// NewFetcher returns a Fetcher that uses safehttp.NewClient with a 10 second timeout.
-func NewFetcher(opts ...Option) *Fetcher {
+// NewFetcher returns a Fetcher that uses safehttp.NewClient with a 10 second timeout. It fails
+// when an option is out of range.
+func NewFetcher(opts ...Option) (*Fetcher, error) {
 	f := &Fetcher{
 		client:          safehttp.NewClient(defaultTimeout),
 		ttl:             defaultTTL,
@@ -98,26 +110,44 @@ func NewFetcher(opts ...Option) *Fetcher {
 		now:             time.Now,
 		entries:         map[string]*list.Element{},
 		lru:             list.New(),
+		attempts:        map[string]attempt{},
 	}
 
 	for _, opt := range opts {
 		opt(f)
 	}
 
-	f.maxEntries = max(f.maxEntries, 1)
+	switch {
+	case f.ttl <= 0:
+		return nil, errors.New("jwks: the ttl must be positive")
+	case f.refetchInterval <= 0:
+		return nil, errors.New("jwks: the refetch interval must be positive")
+	case f.maxEntries < 1:
+		return nil, errors.New("jwks: the cache must hold at least one entry")
+	case f.client == nil || f.now == nil:
+		return nil, errors.New("jwks: the http client and clock must not be nil")
+	}
 
-	return f
+	// A set fetched within the refetch interval must still be fresh, or a valid kid would be
+	// refused until the interval passed.
+	f.refetchInterval = min(f.refetchInterval, f.ttl)
+
+	return f, nil
 }
 
 // Key returns the public key with the given kid from the JWKS at jwksURI.
 // An empty kid matches only when the set holds exactly one key.
-// It returns an error wrapping ErrKeyNotFound when the set has no matching key; any other error
-// means the set couldn't be fetched.
+// It returns an error wrapping ErrKeyNotFound when the set has no matching key, ctx's error when
+// ctx ends while it waits, and any other error when the set couldn't be fetched.
 func (f *Fetcher) Key(ctx context.Context, jwksURI, kid string) (*rsa.PublicKey, error) {
 	e := f.entry(jwksURI)
 
-	e.mu.Lock()
-	defer e.mu.Unlock()
+	select {
+	case e.lock <- struct{}{}:
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+	defer func() { <-e.lock }()
 
 	now := f.now()
 	if !e.fetchedAt.IsZero() && now.Sub(e.fetchedAt) < f.ttl {
@@ -126,11 +156,12 @@ func (f *Fetcher) Key(ctx context.Context, jwksURI, kid string) (*rsa.PublicKey,
 		}
 	}
 
-	if !e.attemptedAt.IsZero() && now.Sub(e.attemptedAt) < f.refetchInterval {
-		if e.err != nil {
-			return nil, e.err
+	if last, ok := f.lastAttempt(jwksURI); ok && now.Sub(last.at) < f.refetchInterval {
+		if last.err != nil {
+			return nil, last.err
 		}
 
+		// The last fetch succeeded within the interval, so the cached set is fresh and lacks the kid.
 		return nil, ErrKeyNotFound
 	}
 
@@ -138,17 +169,15 @@ func (f *Fetcher) Key(ctx context.Context, jwksURI, kid string) (*rsa.PublicKey,
 	if err != nil {
 		// A caller giving up says nothing about the tool, so it must not block other callers.
 		if ctx.Err() == nil {
-			e.attemptedAt = now
-			e.err = err
+			f.recordAttempt(jwksURI, attempt{at: now, err: err})
 		}
 
 		return nil, err
 	}
 
-	e.attemptedAt = now
+	f.recordAttempt(jwksURI, attempt{at: now})
 	e.keys = keys
 	e.fetchedAt = now
-	e.err = nil
 
 	if key, ok := findKey(keys, kid); ok {
 		return key, nil
@@ -169,19 +198,56 @@ func (f *Fetcher) entry(jwksURI string) *entry {
 		}
 	}
 
-	e := &entry{url: jwksURI}
+	e := &entry{url: jwksURI, lock: make(chan struct{}, 1)}
 	f.entries[jwksURI] = f.lru.PushFront(e)
-
-	for f.lru.Len() > f.maxEntries {
-		oldest := f.lru.Back()
-		f.lru.Remove(oldest)
-
-		if evicted, ok := oldest.Value.(*entry); ok {
-			delete(f.entries, evicted.url)
-		}
-	}
+	f.evict()
 
 	return e
+}
+
+// evict drops least recently used entries beyond maxEntries, skipping the newest entry and any
+// entry fetched within the refetch interval. f.mu must be held.
+func (f *Fetcher) evict() {
+	now := f.now()
+
+	for el := f.lru.Back(); el != nil && f.lru.Len() > f.maxEntries; {
+		prev := el.Prev()
+
+		e, ok := el.Value.(*entry)
+		if !ok || el == f.lru.Front() {
+			el = prev
+
+			continue
+		}
+
+		if last, attempted := f.attempts[e.url]; attempted && now.Sub(last.at) < f.refetchInterval {
+			el = prev
+
+			continue
+		}
+
+		f.lru.Remove(el)
+		delete(f.entries, e.url)
+		delete(f.attempts, e.url)
+
+		el = prev
+	}
+}
+
+func (f *Fetcher) lastAttempt(jwksURI string) (attempt, bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	last, ok := f.attempts[jwksURI]
+
+	return last, ok
+}
+
+func (f *Fetcher) recordAttempt(jwksURI string, a attempt) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	f.attempts[jwksURI] = a
 }
 
 func (f *Fetcher) fetch(ctx context.Context, jwksURI string) (keys []Key, err error) {

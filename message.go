@@ -1,6 +1,10 @@
 package lti
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"fmt"
+	"math"
+)
 
 // Claim names from LTI 1.3 §5 and LTI Deep Linking 2.0 §4.
 const (
@@ -55,7 +59,9 @@ func (*DeepLinkingRequest) MessageType() MessageType { return MessageTypeDeepLin
 func (*DeepLinkingRequest) isMessage() {}
 
 // Common is what every launch message says. The caller decides each value, such as which roles a
-// placement maps to; the package only checks it against the spec and lays it out as claims.
+// placement maps to. The package checks identifiers, URLs and document targets against the spec's
+// limits and lays the values out as claims. It doesn't check roles or context types against the
+// LTI vocabularies, since LTI also allows roles from other vocabularies as full URIs.
 type Common struct {
 	// DeploymentID is the deployment the launch happens in. At most 255 characters.
 	DeploymentID string
@@ -150,7 +156,9 @@ type DeepLinkingSettings struct {
 	// Title and Text are a default title and text the tool may use for the items.
 	Title string
 	Text  string
-	// Data is opaque to the tool and must come back unchanged in the response.
+	// Data is opaque to the tool and must come back unchanged in the response. Don't use it to look
+	// up which request a response answers: the response is read before it is verified. If you do
+	// anyway, data must be unguessable, single-use and bound to the user who started the request.
 	Data string
 }
 
@@ -184,10 +192,18 @@ type ContentItem struct {
 	MediaType string `json:"mediaType,omitempty"`
 	// HTML is the markup of an html item, exactly as the tool sent it. Sanitize it before showing it.
 	HTML string `json:"html,omitempty"`
+	// Embed is a link's embed code (Deep Linking 2.0 §3.1). Sanitize its HTML before showing it.
+	Embed *Embed `json:"embed,omitempty"`
 	// LineItem is the line item an ltiResourceLink asks the platform to create, as the tool sent it.
 	LineItem json.RawMessage `json:"lineItem,omitempty"`
-	// Raw is the whole item as the tool sent it, for properties this struct doesn't model.
+	// Raw is the whole item as the tool sent it, for properties this struct doesn't model. Nothing in
+	// it beyond the fields above was checked: never take URLs or markup from it.
 	Raw json.RawMessage `json:"-"`
+}
+
+// Embed is a link's embed code.
+type Embed struct {
+	HTML string `json:"html"`
 }
 
 // Image is an icon or thumbnail of a content item.
@@ -195,6 +211,23 @@ type Image struct {
 	URL    string `json:"url"`
 	Width  int    `json:"width,omitempty"`
 	Height int    `json:"height,omitempty"`
+}
+
+// UnmarshalJSON decodes an image, requiring integer sizes (Deep Linking 2.0 §3).
+func (i *Image) UnmarshalJSON(data []byte) error {
+	var v struct {
+		URL    string  `json:"url"`
+		Width  integer `json:"width"`
+		Height integer `json:"height"`
+	}
+
+	if err := json.Unmarshal(data, &v); err != nil {
+		return err
+	}
+
+	*i = Image{URL: v.URL, Width: int(v.Width), Height: int(v.Height)}
+
+	return nil
 }
 
 // Window is how a content item asks to be opened in a new window.
@@ -205,9 +238,63 @@ type Window struct {
 	WindowFeatures string `json:"windowFeatures,omitempty"`
 }
 
+// UnmarshalJSON decodes a window, requiring integer sizes (Deep Linking 2.0 §3).
+func (w *Window) UnmarshalJSON(data []byte) error {
+	var v struct {
+		TargetName     string  `json:"targetName"`
+		Width          integer `json:"width"`
+		Height         integer `json:"height"`
+		WindowFeatures string  `json:"windowFeatures"`
+	}
+
+	if err := json.Unmarshal(data, &v); err != nil {
+		return err
+	}
+
+	*w = Window{TargetName: v.TargetName, Width: int(v.Width), Height: int(v.Height), WindowFeatures: v.WindowFeatures}
+
+	return nil
+}
+
 // Iframe is how a content item asks to be embedded.
 type Iframe struct {
 	Src    string `json:"src,omitempty"`
 	Width  int    `json:"width,omitempty"`
 	Height int    `json:"height,omitempty"`
+}
+
+// UnmarshalJSON decodes an iframe, requiring integer sizes (Deep Linking 2.0 §3).
+func (f *Iframe) UnmarshalJSON(data []byte) error {
+	var v struct {
+		Src    string  `json:"src"`
+		Width  integer `json:"width"`
+		Height integer `json:"height"`
+	}
+
+	if err := json.Unmarshal(data, &v); err != nil {
+		return err
+	}
+
+	*f = Iframe{Src: v.Src, Width: int(v.Width), Height: int(v.Height)}
+
+	return nil
+}
+
+// integer decodes a JSON number with no fractional part, such as 100 or 100.0. The spec declares
+// sizes as integers, so 100.5 and "100" are refused.
+type integer int
+
+func (n *integer) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		return nil
+	}
+
+	var f float64
+	if err := json.Unmarshal(data, &f); err != nil || f != math.Trunc(f) || math.Abs(f) > math.MaxInt32 {
+		return fmt.Errorf("lti: %s is not an integer", data)
+	}
+
+	*n = integer(f)
+
+	return nil
 }

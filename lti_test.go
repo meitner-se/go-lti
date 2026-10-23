@@ -189,3 +189,68 @@ func TestStaticKeys_Rejects(t *testing.T) {
 		})
 	}
 }
+
+func TestRegression_StaticKeysRefusesAKidForTwoKeys(t *testing.T) {
+	t.Parallel()
+
+	current := ltitest.NewSigningKey(t)
+	next := ltitest.PublicKey(t, ltitest.NewSigningKey(t))
+
+	impostor := ltitest.PublicKey(t, ltitest.NewSigningKey(t))
+	impostor.ID = current.ID
+
+	_, err := lti.StaticKeys(current, impostor)
+	require.Error(t, err, "a different key under the current kid")
+
+	_, err = lti.StaticKeys(current, next, next)
+	require.NoError(t, err, "the same key twice is harmless")
+
+	twin := ltitest.PublicKey(t, ltitest.NewSigningKey(t))
+	twin.ID = next.ID
+
+	_, err = lti.StaticKeys(current, next, twin)
+	require.Error(t, err, "two different published keys under one kid")
+}
+
+func TestRegression_StaticKeysValidatesPublishedKeys(t *testing.T) {
+	t.Parallel()
+
+	current := ltitest.NewSigningKey(t)
+
+	short, err := rsa.GenerateKey(rand.Reader, 1024)
+	require.NoError(t, err)
+
+	for name, key := range map[string]jwks.Key{
+		"no kid":           {PublicKey: &short.PublicKey},
+		"no public key":    {ID: "next"},
+		"a key under 2048": {ID: "next", PublicKey: &short.PublicKey},
+		"an empty rsa key": {ID: "next", PublicKey: &rsa.PublicKey{}},
+	} {
+		_, err := lti.StaticKeys(current, key)
+		require.Error(t, err, name)
+	}
+}
+
+func TestRegression_StaticKeysPublicKeysIsACopy(t *testing.T) {
+	t.Parallel()
+
+	keys, err := lti.StaticKeys(ltitest.NewSigningKey(t), ltitest.PublicKey(t, ltitest.NewSigningKey(t)))
+	require.NoError(t, err)
+
+	first, err := keys.PublicKeys(t.Context())
+	require.NoError(t, err)
+
+	first[0] = jwks.Key{}
+
+	second, err := keys.PublicKeys(t.Context())
+	require.NoError(t, err)
+	assert.NotEmpty(t, second[0].ID)
+}
+
+func TestRegression_NilErrorDoesNotPanic(t *testing.T) {
+	t.Parallel()
+
+	var err *lti.Error
+
+	assert.Equal(t, "lti: <nil>", err.Error())
+}

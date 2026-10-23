@@ -81,7 +81,8 @@ form.ServeHTTP(w, r) // auto-submits id_token and state to the tool, with a stri
 Verify a tool's Deep Linking response:
 
 ```go
-verifier, err := platform.NewDeepLinkingVerifier(cfg, jwks.NewFetcher(), nonces)
+fetcher, err := jwks.NewFetcher()
+verifier, err := platform.NewDeepLinkingVerifier(cfg, fetcher, nonces)
 
 response, err := verifier.Verify(ctx, r.PostFormValue(lti.DeepLinkingResponseField), platform.DeepLinkingSession{
 	Tool:         tool,
@@ -89,10 +90,16 @@ response, err := verifier.Verify(ctx, r.PostFormValue(lti.DeepLinkingResponseFie
 	Settings:     settingsYouSent,
 })
 if rejection, ok := lti.AsError(err); ok {
-	http.Error(w, rejection.Description, rejection.StatusCode())
+	http.Error(w, rejection.Description, rejection.StatusCode()) // the tool's mistake
+	return
+}
+if err != nil {
+	http.Error(w, "the response could not be checked", http.StatusBadGateway) // a jwks or nonce store failure
 	return
 }
 ```
+
+Load the session from your own state for this browser, such as the record behind the session cookie, never from the posted JWT. `nonces` must be shared by every replica and keep each nonce until the time `Claim` is given.
 
 Handle a Dynamic Registration:
 
