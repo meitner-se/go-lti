@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/golang-jwt/jwt/v5"
 
@@ -352,8 +353,8 @@ func itemURLs(item lti.ContentItem) []string {
 
 // checkKeys refuses a JSON value with an object that repeats a key, or, in the objects Go decodes
 // into structs (the item and its icon, thumbnail, window, iframe and embed), a key that differs
-// only in case from another key or from a field the struct models. Go matches keys regardless of
-// case, so either would let Raw disagree with what was checked.
+// only in case from another key or from a field the struct models. Go matches keys by Unicode case
+// folding, so either would let Raw disagree with what was checked.
 func checkKeys(raw json.RawMessage) error {
 	dec := json.NewDecoder(bytes.NewReader(raw))
 
@@ -372,14 +373,30 @@ var (
 	}
 )
 
-// fieldSet maps each field's lowercased name to its spelling.
+// fieldSet maps each field's folded name to its spelling.
 func fieldSet(fields ...string) map[string]string {
 	set := make(map[string]string, len(fields))
 	for _, field := range fields {
-		set[strings.ToLower(field)] = field
+		set[foldKey(field)] = field
 	}
 
 	return set
+}
+
+// foldKey folds key the way encoding/json matches it to a struct field: by Unicode simple folding,
+// so ſ (U+017F) matches s and the Kelvin sign matches k. Each rune becomes the smallest in its orbit.
+func foldKey(key string) string {
+	var b strings.Builder
+
+	for _, r := range key {
+		for f := unicode.SimpleFold(r); f != r; f = unicode.SimpleFold(f) {
+			r = min(r, f)
+		}
+
+		b.WriteRune(r)
+	}
+
+	return b.String()
 }
 
 // walkKeys checks the next JSON value. fields is the struct the value decodes into, or nil when it
@@ -418,7 +435,7 @@ func walkKeys(dec *json.Decoder, fields map[string]string) error {
 
 			seenKey := key
 			if fields != nil {
-				seenKey = strings.ToLower(key)
+				seenKey = foldKey(key)
 
 				if field, known := fields[seenKey]; known && field != key {
 					return fmt.Errorf("lti: key %q should be %q", key, field)

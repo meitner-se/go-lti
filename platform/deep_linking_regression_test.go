@@ -11,6 +11,7 @@ import (
 	"math/big"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -181,6 +182,11 @@ func TestRegression_ContentItemKeysMustNotCollide(t *testing.T) {
 		"type in the wrong case alone":   `{"Type":"ltiResourceLink"}`,
 		"url in the wrong case alone":    `{"type":"link","URL":"https://a.example.com/"}`,
 		"a nested key in the wrong case": `{"type":"link","url":"https://a.example.com/","iframe":{"Src":"https://a.example.com/e"}}`,
+		// encoding/json folds keys by Unicode simple folding, so ſ (U+017F) matches s and K (U+212A) matches k.
+		"src with a long s":            `{"type":"link","url":"https://a.example.com/","iframe":{"src":"javascript:alert(1)","ſrc":"https://a.example.com/e"}}`,
+		"custom with a long s":         `{"type":"ltiResourceLink","custom":{"a":"1"},"cuſtom":{"a":"$Person.email.primary"}}`,
+		"windowFeatures with a long s": `{"type":"link","url":"https://a.example.com/","window":{"windowFeatures":"a","windowFeatureſ":"b"}}`,
+		"a key with a kelvin sign":     "{\"type\":\"link\",\"url\":\"https://a.example.com/\",\"kind\":\"a\",\"\u212Aind\":\"b\"}",
 	} {
 		_, err := verifyItems(t, setup, item)
 		requireRejection(t, err, "duplicate or miscased keys")
@@ -359,4 +365,31 @@ func TestRegression_VerifyUsesTheInjectedClock(t *testing.T) {
 
 	_, err = verifier.Verify(t.Context(), setup.sign(t, claims), createTestDeepLinkingSession())
 	requireRejection(t, err, "not a valid jwt")
+}
+
+func TestRegression_FoldKeyMatchesEncodingJSON(t *testing.T) {
+	t.Parallel()
+
+	// A struct with one field per ASCII letter, so the decoder reports which letter a rune matches.
+	fields := make([]reflect.StructField, 0, 26)
+	for c := 'a'; c <= 'z'; c++ {
+		fields = append(fields, reflect.StructField{Name: strings.ToUpper(string(c)), Type: reflect.TypeFor[int](), Tag: reflect.StructTag(`json:"` + string(c) + `"`)})
+	}
+
+	letters := reflect.StructOf(fields)
+
+	for r := rune(0x20); r <= 0xFFFF; r++ {
+		if r == '"' || r == '\\' || (r >= 0xD800 && r <= 0xDFFF) {
+			continue
+		}
+
+		decoded := reflect.New(letters)
+		require.NoError(t, json.Unmarshal([]byte(`{"`+string(r)+`":1}`), decoded.Interface()))
+
+		for i := range fields {
+			matched := decoded.Elem().Field(i).Int() == 1
+			letter := fields[i].Tag.Get("json")
+			require.Equal(t, matched, foldKey(string(r)) == foldKey(letter), "rune %U and field %q", r, letter)
+		}
+	}
 }
