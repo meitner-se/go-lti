@@ -308,6 +308,9 @@ func TestRegression_ResponseSizesAreCapped(t *testing.T) {
 
 	_, err = setup.verifier.Verify(t.Context(), strings.Repeat("a", MaxDeepLinkingResponseBytes+1), createTestDeepLinkingSession())
 	requireRejection(t, err, "larger than 1 MiB")
+
+	_, err = setup.verifier.Verify(t.Context(), "", createTestDeepLinkingSession())
+	requireRejection(t, err, "deep linking response is missing")
 }
 
 func TestRegression_NonceIsClaimedForTheToolUntilExpiryPlusSkew(t *testing.T) {
