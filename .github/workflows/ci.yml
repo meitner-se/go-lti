@@ -48,3 +48,22 @@ jobs:
         with:
           go-version: stable
       - run: go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...
+
+  fuzz:
+    name: Fuzz ${{ matrix.target }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { package: ./jwks, target: FuzzParseSet }
+          - { package: ./platform, target: FuzzParseRegistration }
+          - { package: ./platform, target: FuzzContentItems }
+          - { package: ./platform, target: FuzzVerify }
+          - { package: ./internal/urlcheck, target: FuzzOnDomains }
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version: stable
+      - run: go test ${{ matrix.package }} -run='^$' -fuzz='^${{ matrix.target }}$' -fuzztime=60s

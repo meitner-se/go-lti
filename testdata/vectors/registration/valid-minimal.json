@@ -1,0 +1,35 @@
+{
+  "description": "Only the members LTI requires.",
+  "request": {
+    "response_types": [
+      "id_token"
+    ],
+    "grant_types": [
+      "implicit",
+      "client_credentials"
+    ],
+    "initiate_login_uri": "https://client.example.org/lti",
+    "redirect_uris": [
+      "https://client.example.org/callback",
+      "https://client.example.org/callback2"
+    ],
+    "client_name": "Virtual Garden",
+    "jwks_uri": "https://client.example.org/.well-known/jwks.json",
+    "token_endpoint_auth_method": "private_key_jwt",
+    "https://purl.imsglobal.org/spec/lti-tool-configuration": {
+      "domain": "client.example.org",
+      "target_link_uri": "https://client.example.org/lti"
+    }
+  },
+  "valid": true,
+  "expect": {
+    "domains": [
+      "client.example.org"
+    ],
+    "requests_name": false,
+    "requests_email": false,
+    "client_names": {},
+    "off_domain_uris": [],
+    "public_suffix_domains": []
+  }
+}

@@ -1,0 +1,55 @@
+{
+  "description": "A redirect URI with a fragment (RFC 6749 §3.1.2).",
+  "request": {
+    "application_type": "web",
+    "response_types": [
+      "id_token"
+    ],
+    "grant_types": [
+      "implicit",
+      "client_credentials"
+    ],
+    "initiate_login_uri": "https://client.example.org/lti",
+    "redirect_uris": [
+      "https://client.example.org/callback#x"
+    ],
+    "client_name": "Virtual Garden",
+    "client_name#sv": "Virtuell trädgård",
+    "jwks_uri": "https://client.example.org/.well-known/jwks.json",
+    "logo_uri": "https://client.example.org/logo.png",
+    "client_uri": "https://client.example.org",
+    "policy_uri": "https://client.example.org/privacy",
+    "tos_uri": "https://client.example.org/tos",
+    "token_endpoint_auth_method": "private_key_jwt",
+    "contacts": [
+      "ve7jtb@example.org",
+      "mary@example.org"
+    ],
+    "scope": "https://purl.imsglobal.org/spec/lti-ags/scope/score https://purl.imsglobal.org/spec/lti-nrps/scope/contextmembership.readonly",
+    "https://purl.imsglobal.org/spec/lti-tool-configuration": {
+      "domain": "client.example.org",
+      "description": "Learn botany by tending to your little (virtual) garden.",
+      "target_link_uri": "https://client.example.org/lti",
+      "custom_parameters": {
+        "context_history": "$Context.id.history"
+      },
+      "claims": [
+        "iss",
+        "sub",
+        "name",
+        "given_name",
+        "family_name"
+      ],
+      "messages": [
+        {
+          "type": "LtiDeepLinkingRequest",
+          "target_link_uri": "https://client.example.org/lti/dl",
+          "label": "Add a virtual garden"
+        }
+      ]
+    }
+  },
+  "valid": false,
+  "error_code": "invalid_redirect_uri",
+  "error_description": "redirect_uris must be https urls, without a fragment or localhost"
+}

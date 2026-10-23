@@ -1,0 +1,30 @@
+{
+  "description": "An html item when only ltiResourceLink was accepted.",
+  "session": {
+    "accept_types": [
+      "ltiResourceLink"
+    ],
+    "accept_multiple": false,
+    "data": "request-1"
+  },
+  "claims": {
+    "iss": "client-1",
+    "aud": "https://platform.example.com/lti",
+    "nonce": "tool-nonce-1",
+    "https://purl.imsglobal.org/spec/lti/claim/message_type": "LtiDeepLinkingResponse",
+    "https://purl.imsglobal.org/spec/lti/claim/version": "1.3.0",
+    "https://purl.imsglobal.org/spec/lti/claim/deployment_id": "deployment-1",
+    "https://purl.imsglobal.org/spec/lti-dl/claim/data": "request-1",
+    "https://purl.imsglobal.org/spec/lti-dl/claim/content_items": [
+      {
+        "type": "html",
+        "html": "<script>alert(1)</script>"
+      }
+    ]
+  },
+  "iat_offset_seconds": 0,
+  "exp_offset_seconds": 300,
+  "valid": false,
+  "error_code": "invalid_request",
+  "error_description": "type the request didn't accept"
+}

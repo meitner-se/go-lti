@@ -1,0 +1,27 @@
+{
+  "description": "A domain with its protocol. Dynamic Registration 1.0 §2.2.2: \"protocol must not be included\".",
+  "request": {
+    "response_types": [
+      "id_token"
+    ],
+    "grant_types": [
+      "implicit",
+      "client_credentials"
+    ],
+    "initiate_login_uri": "https://client.example.org/lti",
+    "redirect_uris": [
+      "https://client.example.org/callback",
+      "https://client.example.org/callback2"
+    ],
+    "client_name": "Virtual Garden",
+    "jwks_uri": "https://client.example.org/.well-known/jwks.json",
+    "token_endpoint_auth_method": "private_key_jwt",
+    "https://purl.imsglobal.org/spec/lti-tool-configuration": {
+      "domain": "https://client.example.org",
+      "target_link_uri": "https://client.example.org/lti"
+    }
+  },
+  "valid": false,
+  "error_code": "invalid_client_metadata",
+  "error_description": "domain must be a host name"
+}

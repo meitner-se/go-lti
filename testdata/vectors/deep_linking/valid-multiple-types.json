@@ -1,0 +1,45 @@
+{
+  "description": "A link, a file and an html item, all accepted.",
+  "session": {
+    "accept_types": [
+      "link",
+      "file",
+      "html"
+    ],
+    "accept_multiple": true,
+    "data": "request-1"
+  },
+  "claims": {
+    "iss": "client-1",
+    "aud": "https://platform.example.com/lti",
+    "nonce": "tool-nonce-1",
+    "https://purl.imsglobal.org/spec/lti/claim/message_type": "LtiDeepLinkingResponse",
+    "https://purl.imsglobal.org/spec/lti/claim/version": "1.3.0",
+    "https://purl.imsglobal.org/spec/lti/claim/deployment_id": "deployment-1",
+    "https://purl.imsglobal.org/spec/lti-dl/claim/data": "request-1",
+    "https://purl.imsglobal.org/spec/lti-dl/claim/content_items": [
+      {
+        "type": "link",
+        "url": "https://tool.example.com/article",
+        "title": "Article",
+        "window": {
+          "targetName": "examplePublisherContent"
+        }
+      },
+      {
+        "type": "file",
+        "url": "https://tool.example.com/worksheet.pdf",
+        "mediaType": "application/pdf",
+        "title": "Worksheet"
+      },
+      {
+        "type": "html",
+        "html": "<p>Hello</p>"
+      }
+    ]
+  },
+  "iat_offset_seconds": 0,
+  "exp_offset_seconds": 300,
+  "valid": true,
+  "items": 3
+}

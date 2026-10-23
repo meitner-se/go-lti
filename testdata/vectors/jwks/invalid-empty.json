@@ -1,0 +1,7 @@
+{
+  "description": "No keys at all.",
+  "jwks": {
+    "keys": []
+  },
+  "valid": false
+}

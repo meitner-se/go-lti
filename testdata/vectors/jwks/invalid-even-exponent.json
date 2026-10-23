@@ -1,0 +1,14 @@
+{
+  "description": "An RS256 key with an even exponent.",
+  "jwks": {
+    "keys": [
+      {
+        "kty": "RSA",
+        "kid": "even",
+        "n": "yUdJl_Nv4GnKahBYZarpuu_YUE1yhky6egmfZFEfvxoJSQXmrAaNrdSG4MIM5Q0MWNy_MA-K6sKNJPXkn0fRO0zCxMS37ZUE7wXgoyJwXjEnb0nunVyPEbZfvUXspXouZpNKYHzb9VagjIt5fMvHrVvgv6sLUcjtSlK5eLD-YlkTxvV05x6mUZ6ISQUPhXYk6MeZC3ZUH28u_iUFX6nptDPwxGs0pN3O_8norBkb0bxXEgAIduasL_fcVz8uXS0p4203gveCCCPYm8NAYQtuoF0IZAf3JOEdP6xSIeQkYyF1VEvc_o9aem_f2iotHJ3hF9I1IYqcRVjO9SOihI8i7w",
+        "e": "AQAA"
+      }
+    ]
+  },
+  "valid": false
+}

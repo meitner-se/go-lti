@@ -1,0 +1,24 @@
+{
+  "description": "The example key set from the 1EdTech Security Framework 1.0 \u00a76.3, verbatim. Its n values are padded, which base64url doesn't allow (RFC 7515 \u00a72), so neither key is usable.",
+  "jwks": {
+    "keys": [
+      {
+        "e": "AQAB",
+        "use": "sig",
+        "alg": "RS256",
+        "kty": "RSA",
+        "n": "oNqXxxWuX7LlovO5reRNau5f96K_o3DJx-wK7lrjBmp0qKwNszbbp8MvfrlVs-oYXfj1rzqAeY6GJF5BETViDTT0i2fEz37J0HGAeTrO7Z5zI5Ure9Cb0lulLOZj1hF8piZzWW_z_set2NyhafoZ-IG1NSe61mqHu7mTjuHYST84igz-bPKhkJAVlmPPjHTO51hG9T_roVIkjXnvgqd2dCaJ0ExT2bR96jcyausbkdDNfPtJdfSCAWYXGQnt0PmIysOHPtCkyFqv5ez8KXT7Q4CAYd7nxwfWNOFRHyLAyF__cYEJlBEKGyJniSIPtkGBWrbXUQhKF6TEFa-RRRl8Dw==",
+        "kid": "1516918956_0"
+      },
+      {
+        "e": "AQAB",
+        "use": "sig",
+        "alg": "RS256",
+        "kty": "RSA",
+        "n": "kMfHwTp2dIYybtvU-xzF2E3dRJBNBtNbb-d3-Rm6nRUraxnTwZ6Fr1YpFBd1pnWzLzdtMv7ofCd28nx-1mfYZ6qhqPWF1RpGe2vVOSTmcu-QpA9h-rouqRKlv3jvXPn623Z2U1Wml0EIxyIzD3WLu7NkWEKSIcBzeY1TctpO5FSU3EyyCX1UoIMuvYBP9tiZlc74yIZvky-qT8Ej3S8L0JqhvD583E_uGMoLowguOl2yYr9zhubiqOxT3VsxvpJCu04TWmvf4XX34IQRyAHcPJFQ2QiBfLWvWyc6iP3JJYJvyapwc5vVEismryXnngyBX8NXHZaarMi6g5kTQi8itw==",
+        "kid": "1516918956_1"
+      }
+    ]
+  },
+  "valid": false
+}
