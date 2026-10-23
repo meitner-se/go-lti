@@ -292,6 +292,11 @@ func TestDeepLinkingVerifier_Verify_Rejects(t *testing.T) {
 			message: "data does not match",
 		},
 		{
+			name:    "data extending the request's",
+			claims:  func(c map[string]any, _ time.Time) { c[lti.ClaimDeepLinkingData] = "request-10" },
+			message: "data does not match",
+		},
+		{
 			name:    "missing data",
 			claims:  func(c map[string]any, _ time.Time) { delete(c, lti.ClaimDeepLinkingData) },
 			message: "data does not match",
