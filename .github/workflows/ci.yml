@@ -18,7 +18,7 @@ jobs:
         # The oldest Go the module supports, and the newest release.
         go: ["1.26.x", "stable"]
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: actions/setup-go@v6
         with:
           go-version: ${{ matrix.go }}
@@ -28,7 +28,7 @@ jobs:
     name: Lint
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: actions/setup-go@v6
         with:
           go-version: stable
@@ -43,7 +43,7 @@ jobs:
     name: Vulnerability check
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: actions/setup-go@v6
         with:
           go-version: stable
@@ -62,7 +62,7 @@ jobs:
           - { package: ./platform, target: FuzzVerify }
           - { package: ./internal/urlcheck, target: FuzzOnDomains }
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: actions/setup-go@v6
         with:
           go-version: stable
