@@ -56,11 +56,9 @@ func Example_launch() {
 	}
 
 	// 1. Where the user clicks. The hints are opaque: the platform decides what they are.
-	loginURL, err := exampleConfig.LoginInitiationURL(tool, platform.LoginInitiation{
-		DeploymentID: "deployment-1",
-		LoginHint:    "user-1",
-		MessageHint:  "launch-1",
-	})
+	initiation := platform.LoginInitiation{DeploymentID: "deployment-1", LoginHint: "user-1", MessageHint: "launch-1"}
+
+	loginURL, err := exampleConfig.LoginInitiationURL(tool, initiation)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -77,10 +75,11 @@ func Example_launch() {
 		log.Fatal(err)
 	}
 
-	// 3. Redeem req.MessageHint for the launch it stands for, then answer with the id_token.
+	// 3. Redeem req.MessageHint for the launch it stands for, including the login initiation it
+	// sent, check that the logged-in user is the one login_hint stands for, then answer.
 	form, err := launcher.Respond(context.Background(), req, platform.Launch{
-		Tool:      tool,
-		LoginHint: "user-1",
+		Tool:       tool,
+		Initiation: initiation,
 		Message: &lti.ResourceLinkRequest{
 			Common: lti.Common{
 				DeploymentID: "deployment-1",

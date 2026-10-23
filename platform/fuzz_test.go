@@ -237,5 +237,14 @@ func FuzzParseAuthenticationRequest(f *testing.F) {
 				t.Fatalf("accepted repeated %s", name)
 			}
 		}
+
+		openid := false
+		for _, scope := range strings.Fields(form.Get("scope")) {
+			openid = openid || scope == "openid"
+		}
+
+		if !openid || form.Get("response_type") != "id_token" || form.Get("response_mode") != "form_post" || form.Get("prompt") != "none" {
+			t.Fatalf("accepted a request that isn't an LTI authentication request: %v", form)
+		}
 	})
 }

@@ -52,6 +52,9 @@ type FormPost struct {
 // ServeHTTP writes the form page. It sets Cache-Control: no-store, so the id_token isn't kept,
 // Referrer-Policy: no-referrer, and a Content-Security-Policy that allows only the page's own
 // inline script, by hash. The form submits by itself, or with a button when scripts are off.
+//
+// The policy sets no frame-ancestors, since launches often run in an iframe; the page has nothing
+// to click that framing could misuse.
 func (f *FormPost) ServeHTTP(w http.ResponseWriter, _ *http.Request) {
 	var page bytes.Buffer
 	if err := formPostTemplate.Execute(&page, f); err != nil {

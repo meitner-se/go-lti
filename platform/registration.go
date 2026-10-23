@@ -103,16 +103,19 @@ func (r *Registration) Tool(clientID string) Tool {
 
 // RegistrationInitiationURL returns where the platform sends the admin's browser to start a
 // Dynamic Registration: the tool's registration URL with openid_configuration and, when set,
-// registration_token added (LTI Dynamic Registration 1.0 §3.3). The token is opaque to the package;
-// the platform decides what it is and checks it at its registration endpoint.
-func RegistrationInitiationURL(toolRegistrationURL, openIDConfigurationURL, registrationToken string) (string, error) {
+// registration_token added (LTI Dynamic Registration 1.0 §3.3). openIDConfigurationURL must be a
+// path under the issuer with no fragment (§3.4), or a compliant tool aborts the registration. The
+// token is opaque to the package; the platform decides what it is and checks it at its
+// registration endpoint.
+func (c Config) RegistrationInitiationURL(toolRegistrationURL, openIDConfigurationURL, registrationToken string) (string, error) {
 	u, ok := urlcheck.ParseHTTPS(strings.TrimSpace(toolRegistrationURL))
 	if !ok {
 		return "", lti.NewError(lti.ErrorInvalidRequest, "the tool's registration url must be an absolute https url", nil)
 	}
 
-	if !urlcheck.IsHTTPS(openIDConfigurationURL) {
-		return "", errors.New("lti: the openid configuration url must be an absolute https url")
+	issuer := strings.TrimSuffix(c.Issuer, "/")
+	if !urlcheck.IsHTTPS(issuer) || !strings.HasPrefix(openIDConfigurationURL, issuer+"/") || strings.Contains(openIDConfigurationURL, "#") || !urlcheck.IsHTTPS(openIDConfigurationURL) {
+		return "", errors.New("lti: the openid configuration url must be an https path under the issuer, without a fragment")
 	}
 
 	query := u.Query()

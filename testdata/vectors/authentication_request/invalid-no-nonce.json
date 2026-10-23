@@ -30,5 +30,6 @@
     ]
   },
   "valid": false,
-  "error_code": "invalid_request"
+  "error_code": "invalid_request",
+  "error_description": "nonce is missing"
 }

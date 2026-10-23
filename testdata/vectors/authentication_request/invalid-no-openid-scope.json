@@ -33,5 +33,6 @@
     ]
   },
   "valid": false,
-  "error_code": "invalid_scope"
+  "error_code": "invalid_scope",
+  "error_description": "scope must include openid"
 }

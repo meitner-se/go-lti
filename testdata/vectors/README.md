@@ -27,7 +27,7 @@ the typo; `valid-spec-example-with-implicit.json` also corrects the typo.
 
 `form` is the tool's OIDC authentication request to the authorization endpoint, as form values
 (each a list, since a parameter may be repeated). A valid case must parse; an invalid case has the
-`error_code` to answer with.
+`error_code` to answer with and a substring of its `error_description`.
 
 ## `deep_linking/`
 

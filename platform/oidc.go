@@ -73,7 +73,9 @@ func (c Config) LoginInitiationURL(tool Tool, li LoginInitiation) (string, error
 }
 
 // AuthenticationRequest is the tool's OIDC authentication request to Endpoints.Authorization:
-// step 2 of the launch (1EdTech Security Framework §5.1.1.2).
+// step 2 of the launch (1EdTech Security Framework §5.1.1.2). Get one from
+// ParseAuthenticationRequest: Launcher.Respond refuses a request built any other way, since only
+// the parser checks its response_type, response_mode, prompt and scope.
 type AuthenticationRequest struct {
 	ClientID    string
 	RedirectURI string
@@ -81,6 +83,8 @@ type AuthenticationRequest struct {
 	MessageHint string
 	Nonce       string
 	State       string
+
+	parsed bool
 }
 
 // ParseAuthenticationRequest reads an authentication request from a GET query or a POST form.
@@ -123,12 +127,16 @@ func ParseAuthenticationRequest(form url.Values) (*AuthenticationRequest, error)
 		return req, lti.NewError(lti.ErrorInvalidRequest, "nonce is missing", nil)
 	}
 
+	req.parsed = true
+
 	return req, nil
 }
 
 func partialRequest(form url.Values) *AuthenticationRequest {
+	// A repeated or oversized parameter is left out, so that RespondError never answers a
+	// redirect_uri the tool didn't send unambiguously (RFC 6749 §4.2.2.1).
 	first := func(name string) string {
-		if values := form[name]; len(values) > 0 && len(values[0]) <= maxAuthenticationParameterBytes {
+		if values := form[name]; len(values) == 1 && len(values[0]) <= maxAuthenticationParameterBytes {
 			return values[0]
 		}
 
@@ -148,8 +156,8 @@ func partialRequest(form url.Values) *AuthenticationRequest {
 // Launch is what the platform launches the tool with, once it has redeemed the request's hints.
 type Launch struct {
 	Tool Tool
-	// LoginHint is the login_hint the platform sent in the login initiation.
-	LoginHint string
+	// Initiation is the login initiation the platform sent for this launch.
+	Initiation LoginInitiation
 	// Message is a *lti.ResourceLinkRequest or a *lti.DeepLinkingRequest.
 	Message lti.Message
 }
@@ -157,19 +165,29 @@ type Launch struct {
 // Respond answers an authentication request with a signed id_token: step 3 of the launch.
 //
 // It checks the request against launch: the client_id must be the tool's, the redirect_uri one of
-// the tool's registered redirect URIs, and the login_hint the one the platform sent. It signs the
-// id_token with the request's nonce and returns the form that posts it and state to redirect_uri.
+// the tool's registered redirect URIs, and the login_hint and lti_message_hint the ones the
+// platform sent. The message's deployment_id and target_link_uri must be the ones the login
+// initiation sent (LTI 1.3 §4.1.2, §5.3.4). It signs the id_token with the request's nonce and
+// returns the form that posts it and state to redirect_uri.
 //
-// A mismatch is an *lti.Error; answer it with RespondError. Any other error, such as a signer
-// failure or an incomplete message, is the platform's.
+// The 1EdTech Security Framework (§5.1.1.3) also asks the platform to check that the user logged in
+// is the one the login_hint stands for. Respond can't see the session, so do that before calling it.
+//
+// A mismatch with the request is an *lti.Error; answer it with RespondError. Any other error, such
+// as a signer failure, a message that disagrees with its login initiation, or a request that didn't
+// come from ParseAuthenticationRequest, is the platform's.
 func (l *Launcher) Respond(ctx context.Context, req *AuthenticationRequest, launch Launch) (*FormPost, error) {
-	if req == nil {
-		return nil, errors.New("lti: respond needs the authentication request")
+	if req == nil || !req.parsed {
+		return nil, errors.New("lti: respond needs a request from ParseAuthenticationRequest")
 	}
 
 	tool := launch.Tool
-	if launch.LoginHint == "" || tool.ClientID == "" {
+	if launch.Initiation.LoginHint == "" || tool.ClientID == "" {
 		return nil, errors.New("lti: launch needs the login_hint sent and the tool's client_id")
+	}
+
+	if err := checkMatchesInitiation(tool, launch.Initiation, launch.Message); err != nil {
+		return nil, err
 	}
 
 	if req.ClientID != tool.ClientID {
@@ -180,8 +198,12 @@ func (l *Launcher) Respond(ctx context.Context, req *AuthenticationRequest, laun
 		return nil, lti.NewError(lti.ErrorInvalidRequest, "redirect_uri is not registered for the tool", nil)
 	}
 
-	if subtle.ConstantTimeCompare([]byte(req.LoginHint), []byte(launch.LoginHint)) != 1 {
+	if subtle.ConstantTimeCompare([]byte(req.LoginHint), []byte(launch.Initiation.LoginHint)) != 1 {
 		return nil, lti.NewError(lti.ErrorLoginRequired, "login_hint doesn't match the launch", nil)
+	}
+
+	if subtle.ConstantTimeCompare([]byte(req.MessageHint), []byte(launch.Initiation.MessageHint)) != 1 {
+		return nil, lti.NewError(lti.ErrorInvalidRequest, "lti_message_hint doesn't match the launch", nil)
 	}
 
 	idToken, err := l.idToken(ctx, tool, req.Nonce, launch.Message)
@@ -195,6 +217,41 @@ func (l *Launcher) Respond(ctx context.Context, req *AuthenticationRequest, laun
 	}
 
 	return &FormPost{Action: req.RedirectURI, Fields: fields}, nil
+}
+
+// checkMatchesInitiation checks that msg launches what li started: the same deployment and the same
+// target link URI, each defaulting to the tool's as they do in the URL and the claims.
+func checkMatchesInitiation(tool Tool, li LoginInitiation, msg lti.Message) error {
+	var common lti.Common
+
+	switch m := msg.(type) {
+	case *lti.ResourceLinkRequest:
+		if m != nil {
+			common = m.Common
+		}
+	case *lti.DeepLinkingRequest:
+		if m != nil {
+			common = m.Common
+		}
+	}
+
+	sentTarget, messageTarget := li.TargetLinkURI, common.TargetLinkURI
+	if sentTarget == "" {
+		sentTarget = tool.TargetLinkURI
+	}
+
+	if messageTarget == "" {
+		messageTarget = tool.TargetLinkURI
+	}
+
+	switch {
+	case common.DeploymentID != li.DeploymentID:
+		return errors.New("lti: the message's deployment_id is not the one the login initiation sent")
+	case messageTarget != sentTarget:
+		return errors.New("lti: the message's target_link_uri is not the one the login initiation sent")
+	}
+
+	return nil
 }
 
 // RespondError returns the OIDC error response for err (OpenID Connect Core §3.1.2.6), posted to

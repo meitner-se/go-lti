@@ -122,6 +122,7 @@ func TestParseRSAPrivateKeyPEM_Rejects(t *testing.T) {
 	validPEM := pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(valid)})
 
 	tests := map[string][]byte{
+		"empty":                 nil,
 		"not pem":               []byte("not a key"),
 		"a key under 2048 bits": pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(short)}),
 		"an ec key":             pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: ecPKCS8}),
@@ -147,11 +148,11 @@ func TestSubstitute(t *testing.T) {
 		"embedded":  "course $Context.id",
 		"literal":   "BIO1",
 		"dollar":    "$",
-		"unoffered": "$Person.email.primary",
+		"unoffered": "$ResourceLink.title",
 	}, map[lti.Variable]string{
 		lti.VariableContextID: "course-1",
 		lti.VariableUserID:    "user-1",
-	})
+	}, lti.Sharing{})
 
 	assert.Equal(t, map[string]string{
 		"context":   "course-1",
@@ -160,10 +161,53 @@ func TestSubstitute(t *testing.T) {
 		"embedded":  "course $Context.id",
 		"literal":   "BIO1",
 		"dollar":    "$",
-		"unoffered": "$Person.email.primary",
+		"unoffered": "$ResourceLink.title",
 	}, got)
 
-	assert.Nil(t, lti.Substitute(nil, nil))
+	assert.Nil(t, lti.Substitute(nil, nil, lti.Sharing{}))
+}
+
+func TestRegression_SubstituteKeepsPersonalDataUnlessShared(t *testing.T) {
+	t.Parallel()
+
+	custom := map[string]string{
+		"email":    "$Person.email.primary",
+		"name":     "$Person.name.full",
+		"username": "$User.username",
+		"phone":    "$Person.phone.mobile",
+		"course":   "$Context.id",
+	}
+	values := map[lti.Variable]string{
+		lti.VariablePersonEmailPrimary: "student@school.example",
+		lti.VariablePersonNameFull:     "Ada Lovelace",
+		lti.VariableUserUsername:       "ada",
+		"Person.phone.mobile":          "+46700000000",
+		lti.VariableContextID:          "course-1",
+	}
+
+	assert.Equal(t, map[string]string{
+		"email":    "$Person.email.primary",
+		"name":     "$Person.name.full",
+		"username": "$User.username",
+		"phone":    "$Person.phone.mobile",
+		"course":   "course-1",
+	}, lti.Substitute(custom, values, lti.Sharing{}), "nothing about the user is shared by default")
+
+	assert.Equal(t, map[string]string{
+		"email":    "$Person.email.primary",
+		"name":     "Ada Lovelace",
+		"username": "ada",
+		"phone":    "$Person.phone.mobile",
+		"course":   "course-1",
+	}, lti.Substitute(custom, values, lti.Sharing{Name: true}))
+
+	assert.Equal(t, map[string]string{
+		"email":    "student@school.example",
+		"name":     "Ada Lovelace",
+		"username": "ada",
+		"phone":    "$Person.phone.mobile",
+		"course":   "course-1",
+	}, lti.Substitute(custom, values, lti.Sharing{Name: true, Email: true}), "other personal data has no sharing setting, so it is never replaced")
 }
 
 func TestStaticKeys_Rejects(t *testing.T) {

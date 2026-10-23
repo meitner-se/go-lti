@@ -33,5 +33,6 @@
     ]
   },
   "valid": false,
-  "error_code": "unsupported_response_type"
+  "error_code": "unsupported_response_type",
+  "error_description": "response_type must be id_token"
 }

@@ -44,7 +44,7 @@ func createTestAuthenticationForm() url.Values {
 }
 
 func createTestLaunch() Launch {
-	return Launch{Tool: createTestTool(), LoginHint: "user-hint-1", Message: createTestResourceLinkRequest()}
+	return Launch{Tool: createTestTool(), Initiation: createTestLoginInitiation(), Message: createTestResourceLinkRequest()}
 }
 
 func parseTestAuthenticationRequest(t *testing.T) *AuthenticationRequest {
@@ -166,6 +166,7 @@ func TestParseAuthenticationRequest(t *testing.T) {
 		MessageHint: "launch-hint-1",
 		Nonce:       "nonce-1",
 		State:       "state-1",
+		parsed:      true,
 	}, parseTestAuthenticationRequest(t))
 }
 
@@ -296,7 +297,7 @@ func TestLauncher_Respond_FailsOnAnIncompleteLaunch(t *testing.T) {
 	launcher := createTestLauncher(t, ltitest.NewSigningKey(t))
 
 	launch := createTestLaunch()
-	launch.LoginHint = ""
+	launch.Initiation.LoginHint = ""
 
 	_, err := launcher.Respond(t.Context(), parseTestAuthenticationRequest(t), launch)
 	require.Error(t, err)
@@ -429,7 +430,7 @@ func TestLaunch_EndToEnd(t *testing.T) {
 	// 3. The platform redeems the message hint (not go-lti's job) and responds with the id_token.
 	assert.Equal(t, "launch-hint-1", req.MessageHint)
 
-	post, err := launcher.Respond(t.Context(), req, Launch{Tool: tool, LoginHint: "user-hint-1", Message: createTestResourceLinkRequest()})
+	post, err := launcher.Respond(t.Context(), req, Launch{Tool: tool, Initiation: createTestLoginInitiation(), Message: createTestResourceLinkRequest()})
 	require.NoError(t, err)
 
 	recorder := httptest.NewRecorder()
@@ -465,7 +466,7 @@ func TestLaunch_EndToEnd(t *testing.T) {
 func TestRegistrationInitiationURL(t *testing.T) {
 	t.Parallel()
 
-	raw, err := RegistrationInitiationURL(
+	raw, err := createTestConfig().RegistrationInitiationURL(
 		"https://tool.example.com/register?lang=sv",
 		"https://platform.example.com/lti/.well-known/openid-configuration",
 		"token-1",
@@ -480,7 +481,7 @@ func TestRegistrationInitiationURL(t *testing.T) {
 		"registration_token":   {"token-1"},
 	}, u.Query())
 
-	raw, err = RegistrationInitiationURL("https://tool.example.com/register", "https://platform.example.com/lti/.well-known/openid-configuration", "")
+	raw, err = createTestConfig().RegistrationInitiationURL("https://tool.example.com/register", "https://platform.example.com/lti/.well-known/openid-configuration", "")
 	require.NoError(t, err)
 	assert.NotContains(t, raw, "registration_token")
 }
@@ -488,11 +489,11 @@ func TestRegistrationInitiationURL(t *testing.T) {
 func TestRegistrationInitiationURL_Rejects(t *testing.T) {
 	t.Parallel()
 
-	_, err := RegistrationInitiationURL("http://tool.example.com/register", "https://platform.example.com/lti/.well-known/openid-configuration", "")
+	_, err := createTestConfig().RegistrationInitiationURL("http://tool.example.com/register", "https://platform.example.com/lti/.well-known/openid-configuration", "")
 	rejection, ok := lti.AsError(err)
 	require.True(t, ok, "a bad tool url is the admin's input")
 	assert.Equal(t, lti.ErrorInvalidRequest, rejection.Code)
 
-	_, err = RegistrationInitiationURL("https://tool.example.com/register", "/lti/.well-known/openid-configuration", "")
+	_, err = createTestConfig().RegistrationInitiationURL("https://tool.example.com/register", "/lti/.well-known/openid-configuration", "")
 	require.Error(t, err)
 }
