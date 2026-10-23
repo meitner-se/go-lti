@@ -16,7 +16,7 @@ import (
 // ============================================================================
 
 // createTestRegistrationJSON is the example request from LTI Dynamic Registration 1.0 §3.5.1
-// (with French instead of Japanese translations), with a scope for grade return and a request for the user's name and email.
+// (with Swedish instead of Japanese translations), with a scope for grade return and a request for the user's name and email.
 func createTestRegistrationJSON() map[string]any {
 	return map[string]any{
 		"application_type":           "web",
@@ -25,7 +25,7 @@ func createTestRegistrationJSON() map[string]any {
 		"initiate_login_uri":         "https://client.example.org/lti",
 		"redirect_uris":              []string{"https://client.example.org/callback", "https://client.example.org/callback2"},
 		"client_name":                "Virtual Garden",
-		"client_name#fr":             "Jardin virtuel",
+		"client_name#sv":             "Virtuell trädgård",
 		"client_name#de-DE":          "Virtueller Garten",
 		"jwks_uri":                   "https://client.example.org/.well-known/jwks.json",
 		"logo_uri":                   "https://client.example.org/logo.png",
@@ -39,7 +39,7 @@ func createTestRegistrationJSON() map[string]any {
 			"domain":            "client.example.org",
 			"secondary_domains": []string{"cdn.example.com"},
 			"description":       "Learn botany by tending to your little (virtual) garden.",
-			"description#fr":    "Apprenez la botanique en entretenant votre petit jardin (virtuel).",
+			"description#sv":    "Lär dig botanik genom att sköta din lilla (virtuella) trädgård.",
 			"target_link_uri":   "https://client.example.org/lti",
 			"custom_parameters": map[string]any{"context_history": "$Context.id.history"},
 			"claims":            []string{"iss", "sub", "name", "given_name", "family_name", "email"},
@@ -48,7 +48,7 @@ func createTestRegistrationJSON() map[string]any {
 					"type":            "LtiDeepLinkingRequest",
 					"target_link_uri": "https://client.example.org/lti/dl",
 					"label":           "Add a virtual garden",
-					"label#fr":        "Ajouter un jardin virtuel",
+					"label#sv":        "Lägg till en virtuell trädgård",
 				},
 				map[string]any{"type": "LtiSubmissionReviewRequest"},
 			},
@@ -141,7 +141,7 @@ func TestParseRegistration_KeepsTheToolsMetadata(t *testing.T) {
 
 	req := parseTestRegistration(t)
 
-	assert.Equal(t, map[string]string{"fr": "Jardin virtuel", "de-DE": "Virtueller Garten"}, req.ClientNames)
+	assert.Equal(t, map[string]string{"sv": "Virtuell trädgård", "de-DE": "Virtueller Garten"}, req.ClientNames)
 	assert.Equal(t, "https://client.example.org/logo.png", req.LogoURI)
 	assert.Equal(t, "https://client.example.org", req.ClientURI)
 	assert.Equal(t, "https://client.example.org/privacy", req.PolicyURI)
@@ -153,7 +153,7 @@ func TestParseRegistration_MetadataIsOptional(t *testing.T) {
 	t.Parallel()
 
 	body := createTestRegistrationJSON()
-	for _, key := range []string{"client_name#fr", "client_name#de-DE", "logo_uri", "client_uri", "policy_uri", "tos_uri"} {
+	for _, key := range []string{"client_name#sv", "client_name#de-DE", "logo_uri", "client_uri", "policy_uri", "tos_uri"} {
 		delete(body, key)
 	}
 
@@ -205,7 +205,7 @@ func TestParseRegistration_RejectsBadLocalizedNames(t *testing.T) {
 		key   string
 		value any
 	}{
-		{name: "a non-string name", key: "client_name#fr", value: 42},
+		{name: "a non-string name", key: "client_name#sv", value: 42},
 		{name: "an empty language tag", key: "client_name#", value: "Garden"},
 		{name: "a language tag with spaces", key: "client_name#s v", value: "Garden"},
 		{name: "a subtag over 8 characters", key: "client_name#abcdefghi", value: "Garden"},
@@ -311,7 +311,7 @@ func TestPlatform_ReviewRegistration(t *testing.T) {
 
 	assert.Equal(t, RegistrationReview{
 		ClientName:  "Virtual Garden",
-		ClientNames: map[string]string{"fr": "Jardin virtuel", "de-DE": "Virtueller Garten"},
+		ClientNames: map[string]string{"sv": "Virtuell trädgård", "de-DE": "Virtueller Garten"},
 		Description: "Learn botany by tending to your little (virtual) garden.",
 		LogoURI:     "https://client.example.org/logo.png",
 		Domains:     []string{"client.example.org", "cdn.example.com"},

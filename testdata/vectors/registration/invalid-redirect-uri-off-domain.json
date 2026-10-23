@@ -14,7 +14,7 @@
       "https://evil.example.net/callback"
     ],
     "client_name": "Virtual Garden",
-    "client_name#fr": "Jardin virtuel",
+    "client_name#sv": "Virtuell trädgård",
     "jwks_uri": "https://client.example.org/.well-known/jwks.json",
     "logo_uri": "https://client.example.org/logo.png",
     "client_uri": "https://client.example.org",

@@ -33,7 +33,7 @@ func Example_registration() {
 		"initiate_login_uri": "https://tool.example.com/lti/login",
 		"redirect_uris": ["https://tool.example.com/lti/launch"],
 		"client_name": "Quiz Tool",
-		"client_name#fr": "Outil de quiz",
+		"client_name#sv": "Quizverktyg",
 		"jwks_uri": "https://tool.example.com/.well-known/jwks.json",
 		"token_endpoint_auth_method": "private_key_jwt",
 		"scope": "https://purl.imsglobal.org/spec/lti-ags/scope/score",
@@ -52,7 +52,7 @@ func Example_registration() {
 	}
 
 	review := reg.Review(exampleConfig)
-	fmt.Println(review.ClientName, review.ClientNames["fr"])
+	fmt.Println(review.ClientName, review.ClientNames["sv"])
 	fmt.Println("asks for email:", review.RequestsEmail)
 	fmt.Println("unsupported scopes:", review.UnsupportedScopes)
 
@@ -61,7 +61,7 @@ func Example_registration() {
 	fmt.Println(response.ClientID, response.ToolConfiguration.Claims)
 
 	// Output:
-	// Quiz Tool Outil de quiz
+	// Quiz Tool Quizverktyg
 	// asks for email: true
 	// unsupported scopes: [https://purl.imsglobal.org/spec/lti-ags/scope/score]
 	// client-1 [iss sub]
