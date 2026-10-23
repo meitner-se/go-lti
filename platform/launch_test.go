@@ -527,3 +527,40 @@ type mockKeys struct {
 func (m *mockKeys) SigningKey(context.Context) (lti.SigningKey, error) { return m.signing, nil }
 
 func (m *mockKeys) PublicKeys(context.Context) ([]jwks.Key, error) { return m.public, nil }
+
+func TestRegression_EmptyDocumentTargetsAreSentAsAnEmptyArray(t *testing.T) {
+	t.Parallel()
+
+	launcher := createTestLauncher(t, ltitest.NewSigningKey(t))
+
+	msg := createTestDeepLinkingRequest()
+	msg.Settings.AcceptTypes = []lti.ContentItemType{lti.ContentItemTypeFile}
+	msg.Settings.AcceptPresentationDocumentTargets = nil
+
+	claims, err := launcher.idTokenClaims(createTestTool(), "nonce-1", msg, testNow)
+	require.NoError(t, err, "Deep Linking 2.0 §4.6.2: a platform that only takes files accepts no document targets")
+
+	settings, err := json.Marshal(claims[lti.ClaimDeepLinkingSettings])
+	require.NoError(t, err)
+	assert.Contains(t, string(settings), `"accept_presentation_document_targets":[]`)
+}
+
+func TestRegression_ReturnURLMustBeHTTPS(t *testing.T) {
+	t.Parallel()
+
+	launcher := createTestLauncher(t, ltitest.NewSigningKey(t))
+
+	for _, returnURL := range []string{"javascript:alert(1)", "http://platform.example.com/back", "/back"} {
+		msg := createTestResourceLinkRequest()
+		msg.Presentation.ReturnURL = returnURL
+
+		_, err := launcher.idTokenClaims(createTestTool(), "nonce-1", msg, testNow)
+		require.Error(t, err, returnURL)
+	}
+
+	msg := createTestResourceLinkRequest()
+	msg.Presentation.ReturnURL = "https://platform.example.com/back"
+
+	_, err := launcher.idTokenClaims(createTestTool(), "nonce-1", msg, testNow)
+	require.NoError(t, err)
+}
