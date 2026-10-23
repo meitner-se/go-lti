@@ -253,6 +253,49 @@ func TestRegression_FetcherRefusesAPlainHTTPURL(t *testing.T) {
 	require.ErrorIs(t, err, safehttp.ErrNotHTTPS, "the url is checked even when the client would connect")
 }
 
+func TestRegression_AnEntryIsNotEvictedWhileItsFetchRuns(t *testing.T) {
+	t.Parallel()
+
+	key, _ := createTestRSAKey(t, "kid-1")
+	body, _ := json.Marshal(NewSet(key))
+	release := make(chan struct{})
+
+	var requests atomic.Int32
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+
+		if r.URL.Path == "/slow" {
+			<-release
+		}
+
+		_, err := w.Write(body)
+		assert.NoError(t, err)
+	}))
+	t.Cleanup(server.Close)
+
+	fetcher, err := NewFetcher(WithHTTPClient(server.Client()), WithMaxEntries(1))
+	require.NoError(t, err)
+
+	done := make(chan error)
+	go func() {
+		_, err := fetcher.Key(context.Background(), server.URL+"/slow", "kid-1")
+		done <- err
+	}()
+
+	require.Eventually(t, func() bool { return entryHeld(fetcher, server.URL+"/slow") }, time.Second, time.Millisecond)
+
+	// Another tool's lookup would evict the slow entry, which has no attempt recorded yet.
+	_, err = fetcher.Key(t.Context(), server.URL+"/fast", "kid-1")
+	require.NoError(t, err)
+
+	close(release)
+	require.NoError(t, <-done)
+
+	_, err = fetcher.Key(t.Context(), server.URL+"/slow", "kid-1")
+	require.NoError(t, err, "a valid kid must not be refused right after its own fetch")
+	assert.Equal(t, int32(2), requests.Load())
+}
+
 func TestRegression_FetcherStopsReadingAnOversizedSet(t *testing.T) {
 	t.Parallel()
 

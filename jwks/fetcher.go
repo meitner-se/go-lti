@@ -38,7 +38,8 @@ var ErrKeyNotFound = errors.New("jwks: no key matches the kid")
 //
 // Lookups for the same URL wait for one another and share one fetch; a waiting lookup gives up when
 // its context ends. The cache holds about WithMaxEntries URLs and drops the least recently used,
-// but never one fetched within the refetch interval, so cache churn can't bypass the rate limit.
+// but never one being looked up or fetched within the refetch interval, so cache churn can't
+// bypass the rate limit.
 // It is safe for concurrent use.
 type Fetcher struct {
 	client          *http.Client
@@ -205,16 +206,17 @@ func (f *Fetcher) entry(jwksURI string) *entry {
 	return e
 }
 
-// evict drops least recently used entries beyond maxEntries, skipping the newest entry and any
-// entry fetched within the refetch interval. f.mu must be held.
+// evict drops least recently used entries beyond maxEntries, skipping the newest entry, any entry
+// a lookup holds, and any entry fetched within the refetch interval. f.mu must be held.
 func (f *Fetcher) evict() {
 	now := f.now()
 
 	for el := f.lru.Back(); el != nil && f.lru.Len() > f.maxEntries; {
 		prev := el.Prev()
 
+		// A held entry may be mid-fetch, and dropping it would orphan the keys it is about to store.
 		e, ok := el.Value.(*entry)
-		if !ok || el == f.lru.Front() {
+		if !ok || el == f.lru.Front() || len(e.lock) == 1 {
 			el = prev
 
 			continue
