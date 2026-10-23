@@ -1,0 +1,55 @@
+{
+  "description": "Expired two minutes ago, beyond the one-minute clock skew.",
+  "session": {
+    "accept_types": [
+      "ltiResourceLink"
+    ],
+    "accept_multiple": false,
+    "data": "request-1"
+  },
+  "claims": {
+    "iss": "client-1",
+    "aud": "https://platform.example.com/lti",
+    "nonce": "tool-nonce-1",
+    "https://purl.imsglobal.org/spec/lti/claim/message_type": "LtiDeepLinkingResponse",
+    "https://purl.imsglobal.org/spec/lti/claim/version": "1.3.0",
+    "https://purl.imsglobal.org/spec/lti/claim/deployment_id": "deployment-1",
+    "https://purl.imsglobal.org/spec/lti-dl/claim/data": "request-1",
+    "https://purl.imsglobal.org/spec/lti-dl/claim/content_items": [
+      {
+        "type": "ltiResourceLink",
+        "title": "A title",
+        "text": "This is a link to an activity that will be graded",
+        "url": "https://tool.example.com/lti/activity/1",
+        "icon": {
+          "url": "https://tool.example.com/static/icon.png",
+          "width": 100,
+          "height": 100
+        },
+        "thumbnail": {
+          "url": "https://tool.example.com/static/thumbnail.png",
+          "width": 90,
+          "height": 90
+        },
+        "lineItem": {
+          "scoreMaximum": 87,
+          "label": "Chapter 12 quiz",
+          "resourceId": "xyzpdq1234",
+          "tag": "originality"
+        },
+        "iframe": {
+          "width": 890,
+          "height": 890
+        },
+        "custom": {
+          "quiz_id": "az-123",
+          "duedate": "$Resource.submission.endDateTime"
+        }
+      }
+    ]
+  },
+  "iat_offset_seconds": 0,
+  "exp_offset_seconds": -120,
+  "valid": false,
+  "error_code": "invalid_request"
+}

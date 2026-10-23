@@ -1,0 +1,26 @@
+{
+  "description": "Two RS256 keys during a rotation, one of them 3072 bits and with no alg or use.",
+  "jwks": {
+    "keys": [
+      {
+        "kty": "RSA",
+        "n": "yUdJl_Nv4GnKahBYZarpuu_YUE1yhky6egmfZFEfvxoJSQXmrAaNrdSG4MIM5Q0MWNy_MA-K6sKNJPXkn0fRO0zCxMS37ZUE7wXgoyJwXjEnb0nunVyPEbZfvUXspXouZpNKYHzb9VagjIt5fMvHrVvgv6sLUcjtSlK5eLD-YlkTxvV05x6mUZ6ISQUPhXYk6MeZC3ZUH28u_iUFX6nptDPwxGs0pN3O_8norBkb0bxXEgAIduasL_fcVz8uXS0p4203gveCCCPYm8NAYQtuoF0IZAf3JOEdP6xSIeQkYyF1VEvc_o9aem_f2iotHJ3hF9I1IYqcRVjO9SOihI8i7w",
+        "e": "AQAB",
+        "kid": "current",
+        "use": "sig",
+        "alg": "RS256"
+      },
+      {
+        "kty": "RSA",
+        "n": "6gNXA9rsCDtVapeJT70NnKkDd3CP7i0G5cackzoEsQItTnUNFKQsNjv-vCUjN45DBh9UZm27si8SYHmDyw1jqgGF2Sf-W_bn9HPQ9lu0_K7Ecqk9SEQ7iZuIeAWUqEbeOLLtHMfqqM9ujpgqeRYeFR-6F_PvAT46L11FwrHRwToflTMqUcI5N3ua1qpJ7vEbz7kZjiSdl3l4UaogEFg4B797QcUwVlprhxVviRSWJH9YKEhmD0hgBHsfqNpMbuuBYeWYEVldewbAQp9eqD3Pw-YPzK7QEXK4yS4WqGJ_OMTB8DuLSw-rmaaZz_OuE3G4EyiXAnRyGxok3hEY9bi8QvDey4OTX009yhd10h2SvnvFtBBpQKuD0Z8aRl8SiippcgF8ZPfWSNj8avs-RIbgFN1Nc9mJcseEmSpr0RBcZQWTXm76Z6neFA4Fm4Y6JVlsohxLyFcwKIoJTiHufjqa-QuQgj5fi6HEkmtpb2N5P2WJPK5RIp9NrJ1awXCHfGpx",
+        "e": "AQAB",
+        "kid": "next"
+      }
+    ]
+  },
+  "valid": true,
+  "kids": [
+    "current",
+    "next"
+  ]
+}

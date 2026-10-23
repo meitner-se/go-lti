@@ -1,0 +1,15 @@
+{
+  "description": "An RS256 key shorter than 2048 bits.",
+  "jwks": {
+    "keys": [
+      {
+        "kty": "RSA",
+        "n": "xkbAUL0cRPpBA5ZkvC2uXJEeVrRqadI7KXCtgJ2Xi8GOvsyHGxmmAlsyMTTL6v3Kj6j7ZTq54-v6NZqyGF47JtEB86qPrPhM8edYRssMFHiU4sk8S-3wxlUMWLA8g1ylou7W_dKW7ij3x_-yBdBSpvx6rF7FTGO11P71JRKWNO8",
+        "e": "AQAB",
+        "kid": "short",
+        "alg": "RS256"
+      }
+    ]
+  },
+  "valid": false
+}

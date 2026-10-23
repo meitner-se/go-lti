@@ -1,0 +1,47 @@
+{
+  "description": "An EC key, an encryption key and keys declared for RS512 and PS256 are skipped; the RS256 key remains.",
+  "jwks": {
+    "keys": [
+      {
+        "kty": "EC",
+        "crv": "P-256",
+        "kid": "ec",
+        "x": "f83OJ3D2xF1Bg8vub9tLe1gHMzV76e8Tus9uPHvRVEU",
+        "y": "x_FEzRu9m36HLN_tue659LNpXW6pCyStikYjKIWI5a0"
+      },
+      {
+        "kty": "RSA",
+        "n": "vCKWnJ-XByMgN6SwYNUovGfj0hkdvpM17eR4qZM-coxArc66S6foQfRdJOUb1vUixWg-BJkG3dlG7ShHpPEVWFOGb13Bn436E3D6x-pKoWxRLhLRrYEETqcunevEIPH17fLTfKhjbSPGFJni1yno_dOF6mZatd-yQUQOUd6stYfKlBfCMhlAYPgonv8EHogoYLilXPBJ8IOfmG5O1qd9VzIavc4Aklr5DNp_barHQo3ISPC-4rZ5AkjtJ_0kPycynDxTGGFTfRBQBVPMeNtCOvzuDxmjkZ3-unLkLKPqd1dqM97_TfqquSXSQIkXCv4sAdRhkbCZW90otxoIdEN1sw",
+        "e": "AQAB",
+        "kid": "encryption",
+        "use": "enc"
+      },
+      {
+        "kty": "RSA",
+        "n": "vCKWnJ-XByMgN6SwYNUovGfj0hkdvpM17eR4qZM-coxArc66S6foQfRdJOUb1vUixWg-BJkG3dlG7ShHpPEVWFOGb13Bn436E3D6x-pKoWxRLhLRrYEETqcunevEIPH17fLTfKhjbSPGFJni1yno_dOF6mZatd-yQUQOUd6stYfKlBfCMhlAYPgonv8EHogoYLilXPBJ8IOfmG5O1qd9VzIavc4Aklr5DNp_barHQo3ISPC-4rZ5AkjtJ_0kPycynDxTGGFTfRBQBVPMeNtCOvzuDxmjkZ3-unLkLKPqd1dqM97_TfqquSXSQIkXCv4sAdRhkbCZW90otxoIdEN1sw",
+        "e": "AQAB",
+        "kid": "rs512",
+        "alg": "RS512"
+      },
+      {
+        "kty": "RSA",
+        "n": "vCKWnJ-XByMgN6SwYNUovGfj0hkdvpM17eR4qZM-coxArc66S6foQfRdJOUb1vUixWg-BJkG3dlG7ShHpPEVWFOGb13Bn436E3D6x-pKoWxRLhLRrYEETqcunevEIPH17fLTfKhjbSPGFJni1yno_dOF6mZatd-yQUQOUd6stYfKlBfCMhlAYPgonv8EHogoYLilXPBJ8IOfmG5O1qd9VzIavc4Aklr5DNp_barHQo3ISPC-4rZ5AkjtJ_0kPycynDxTGGFTfRBQBVPMeNtCOvzuDxmjkZ3-unLkLKPqd1dqM97_TfqquSXSQIkXCv4sAdRhkbCZW90otxoIdEN1sw",
+        "e": "AQAB",
+        "kid": "ps256",
+        "alg": "PS256"
+      },
+      {
+        "kty": "RSA",
+        "n": "yUdJl_Nv4GnKahBYZarpuu_YUE1yhky6egmfZFEfvxoJSQXmrAaNrdSG4MIM5Q0MWNy_MA-K6sKNJPXkn0fRO0zCxMS37ZUE7wXgoyJwXjEnb0nunVyPEbZfvUXspXouZpNKYHzb9VagjIt5fMvHrVvgv6sLUcjtSlK5eLD-YlkTxvV05x6mUZ6ISQUPhXYk6MeZC3ZUH28u_iUFX6nptDPwxGs0pN3O_8norBkb0bxXEgAIduasL_fcVz8uXS0p4203gveCCCPYm8NAYQtuoF0IZAf3JOEdP6xSIeQkYyF1VEvc_o9aem_f2iotHJ3hF9I1IYqcRVjO9SOihI8i7w",
+        "e": "AQAB",
+        "kid": "signing",
+        "use": "sig",
+        "alg": "RS256"
+      }
+    ]
+  },
+  "valid": true,
+  "kids": [
+    "signing"
+  ]
+}
