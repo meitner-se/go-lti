@@ -1,6 +1,7 @@
 package platform
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -472,3 +473,58 @@ func TestLauncher_IDToken_DoesNotVerifyAgainstAnotherKey(t *testing.T) {
 	}, jwt.WithValidMethods([]string{"RS256"}))
 	require.Error(t, err)
 }
+
+func TestRegression_ExtensionsCantSetReservedClaimsTheMessageLeavesOut(t *testing.T) {
+	t.Parallel()
+
+	launcher := createTestLauncher(t, ltitest.NewSigningKey(t))
+
+	for _, name := range []string{lti.ClaimContext, lti.ClaimCustom, lti.ClaimLaunchPresentation, lti.ClaimDeepLinkingSettings} {
+		msg := createTestResourceLinkRequest()
+		msg.Context = nil
+		msg.Custom = nil
+		msg.Presentation = lti.Presentation{}
+		msg.Extensions = []lti.Claim{testNamedClaim{name: name}}
+
+		_, err := launcher.idTokenClaims(createTestTool(), "nonce-1", msg, testNow)
+		require.Error(t, err, name)
+	}
+}
+
+func TestRegression_NilExtensionIsAnError(t *testing.T) {
+	t.Parallel()
+
+	launcher := createTestLauncher(t, ltitest.NewSigningKey(t))
+
+	msg := createTestResourceLinkRequest()
+	msg.Extensions = []lti.Claim{nil}
+
+	_, err := launcher.idTokenClaims(createTestTool(), "nonce-1", msg, testNow)
+	require.Error(t, err)
+}
+
+func TestRegression_JWKSRefusesKeysWithoutKidOrPublicKey(t *testing.T) {
+	t.Parallel()
+
+	signing := ltitest.NewSigningKey(t)
+
+	for name, published := range map[string][]jwks.Key{
+		"no kid":        {{PublicKey: ltitest.PublicKey(t, signing).PublicKey}},
+		"no public key": {{ID: "kid-1"}},
+	} {
+		launcher, err := NewLauncher(createTestConfig(), &mockKeys{signing: signing, public: published})
+		require.NoError(t, err)
+
+		_, err = launcher.JWKS(t.Context())
+		require.Error(t, err, name)
+	}
+}
+
+type mockKeys struct {
+	signing lti.SigningKey
+	public  []jwks.Key
+}
+
+func (m *mockKeys) SigningKey(context.Context) (lti.SigningKey, error) { return m.signing, nil }
+
+func (m *mockKeys) PublicKeys(context.Context) ([]jwks.Key, error) { return m.public, nil }

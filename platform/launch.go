@@ -80,6 +80,13 @@ func (l *Launcher) JWKS(ctx context.Context) (jwks.Set, error) {
 		return jwks.Set{}, fmt.Errorf("lti: cannot list public keys: %w", err)
 	}
 
+	// Security Framework §6.3: every published key needs a kid.
+	for _, key := range keys {
+		if key.ID == "" || key.PublicKey == nil || key.PublicKey.N == nil {
+			return jwks.Set{}, errors.New("lti: a published key has no kid or no public key")
+		}
+	}
+
 	return jwks.NewSet(keys...), nil
 }
 
@@ -202,6 +209,10 @@ func (l *Launcher) idTokenClaims(tool Tool, nonce string, msg lti.Message, now t
 	}
 
 	for _, extension := range common.Extensions {
+		if extension == nil {
+			return nil, errors.New("lti: an extension claim is nil")
+		}
+
 		name := extension.ClaimName()
 		if !strings.Contains(name, "://") || reservedClaims[name] {
 			return nil, fmt.Errorf("lti: extension claim %q must be a fully qualified url that the package doesn't set", name)

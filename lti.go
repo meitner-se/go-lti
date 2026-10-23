@@ -45,6 +45,10 @@ func NewError(code ErrorCode, description string, cause error) *Error {
 
 // Error returns the code, the description and the cause.
 func (e *Error) Error() string {
+	if e == nil {
+		return "lti: <nil>"
+	}
+
 	if e.cause != nil {
 		return fmt.Sprintf("lti: %s: %s: %v", e.Code, e.Description, e.cause)
 	}

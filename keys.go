@@ -5,6 +5,7 @@ import (
 	"crypto"
 	"crypto/rsa"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/meitner-se/go-lti/jwks"
@@ -51,7 +52,8 @@ type Keys interface {
 }
 
 // StaticKeys returns Keys that sign with current and publish it along with publish, such as the
-// next key in a rotation.
+// next key in a rotation. Each published key needs a kid and an RSA key of at least 2048 bits, and
+// no two keys may share a kid. The current key may be listed in publish too.
 func StaticKeys(current SigningKey, publish ...jwks.Key) (Keys, error) {
 	currentPublic, err := current.PublicKey()
 	if err != nil {
@@ -60,12 +62,16 @@ func StaticKeys(current SigningKey, publish ...jwks.Key) (Keys, error) {
 
 	public := []jwks.Key{currentPublic}
 	for _, key := range publish {
-		if key.ID == "" || key.PublicKey == nil {
-			return nil, errors.New("lti: published keys need a kid and a public key")
+		if key.ID == "" || key.PublicKey == nil || key.PublicKey.N == nil || key.PublicKey.N.BitLen() < jwks.MinRSABits {
+			return nil, errors.New("lti: published keys need a kid and an rsa key of at least 2048 bits")
 		}
 
-		if key.ID == current.ID {
-			continue
+		if existing := findPublished(public, key.ID); existing != nil {
+			if existing.Equal(key.PublicKey) {
+				continue
+			}
+
+			return nil, fmt.Errorf("lti: two different published keys share the kid %q", key.ID)
 		}
 
 		public = append(public, key)
@@ -98,4 +104,14 @@ type KeySource interface {
 type NonceStore interface {
 	// Claim marks nonce as used by issuer until expiresAt. It returns false when it was already used.
 	Claim(ctx context.Context, issuer, nonce string, expiresAt time.Time) (bool, error)
+}
+
+func findPublished(keys []jwks.Key, kid string) *rsa.PublicKey {
+	for _, key := range keys {
+		if key.ID == kid {
+			return key.PublicKey
+		}
+	}
+
+	return nil
 }

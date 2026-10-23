@@ -49,7 +49,8 @@ type JWK struct {
 	E   string `json:"e,omitempty"`
 }
 
-// NewSet returns the Set that publishes keys as RS256 signing keys.
+// NewSet returns the Set that publishes keys as RS256 signing keys. Every key must have a
+// PublicKey.
 func NewSet(keys ...Key) Set {
 	set := Set{Keys: make([]JWK, 0, len(keys))}
 	for _, key := range keys {
