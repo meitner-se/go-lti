@@ -318,8 +318,8 @@ type RegistrationReview struct {
 	ClientNames map[string]string
 	Description string
 	LogoURI     string
-	// Domains are the tool's domain and secondary domains: where users will be sent, and where the
-	// content it returns must live.
+	// Domains are the tool's domain and secondary domains, which OnToolDomains checks a URL
+	// against. Neither registration nor Deep Linking requires the tool's URLs to be on them.
 	Domains   []string
 	Contacts  []string
 	ClientURI string
