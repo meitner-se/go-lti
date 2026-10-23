@@ -29,6 +29,8 @@ func TestParseHTTPS(t *testing.T) {
 		"https://bücher.example/":                     false,
 		"https://*.example.com/":                      false,
 		"https://tool..example.com/":                  false,
+		"https://0.0/x":                               false,
+		"https://127.1/x":                             false,
 		"javascript:alert(1)":                         false,
 		"/relative":                                   false,
 		"":                                            false,

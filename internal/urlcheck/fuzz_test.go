@@ -21,10 +21,12 @@ func FuzzOnDomains(f *testing.F) {
 			return
 		}
 
-		rest, ok := strings.CutPrefix(raw, "https://")
-		if !ok {
+		// Schemes are case-insensitive (RFC 3986 §3.1).
+		if len(raw) < len("https://") || !strings.EqualFold(raw[:len("https://")], "https://") {
 			t.Fatalf("matched a non-https url %q", raw)
 		}
+
+		rest := raw[len("https://"):]
 
 		host := rest
 		if i := strings.IndexAny(host, "/?#"); i >= 0 {
@@ -40,10 +42,12 @@ func FuzzOnDomains(f *testing.F) {
 		}
 
 		host = strings.TrimSuffix(strings.ToLower(host), ".")
-		want := strings.TrimSuffix(strings.ToLower(strings.TrimSpace(domain)), ".")
+		want := strings.ToLower(strings.TrimSpace(domain))
 		if j := strings.LastIndex(want, ":"); j >= 0 {
 			want = want[:j]
 		}
+
+		want = strings.TrimSuffix(want, ".")
 
 		for _, r := range host {
 			if r > 0x7f {
