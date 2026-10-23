@@ -356,6 +356,12 @@ func TestLauncher_RespondError_OnlyToARegisteredRedirectURI(t *testing.T) {
 		_, ok := launcher.RespondError(req, createTestTool(), rejection)
 		assert.False(t, ok, name)
 	}
+
+	noClient := createTestTool()
+	noClient.ClientID = ""
+
+	_, ok := launcher.RespondError(&AuthenticationRequest{RedirectURI: "https://tool.example.com/launch"}, noClient, rejection)
+	assert.False(t, ok, "a tool without a client_id")
 }
 
 func TestFormPost_ServeHTTP(t *testing.T) {
