@@ -36,7 +36,8 @@ var (
 var ipv6GlobalUnicast = netip.MustParsePrefix("2000::/3")
 
 // blockedPrefixes are special-purpose ranges that netip's predicates and ipv6GlobalUnicast don't
-// cover (RFC 6890).
+// cover (RFC 6890). AS112 and AMT are left out on purpose: the IANA registries mark them globally
+// reachable, and TestIsPublicAddr_FollowsTheIANARegistries checks the list against them.
 var blockedPrefixes = []netip.Prefix{
 	netip.MustParsePrefix("0.0.0.0/8"),       // "this network"
 	netip.MustParsePrefix("100.64.0.0/10"),   // carrier-grade NAT

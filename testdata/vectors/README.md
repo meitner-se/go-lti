@@ -11,6 +11,9 @@ algorithms, encryption keys, and RS256 keys that are malformed, padded (base64ur
 RFC 7515 §2), outside 2048 to 4096 bits, or have an invalid exponent. An invalid case is a set with
 no usable key.
 
+`invalid-security-framework-example.json` is the 1EdTech Security Framework §6.3 example set. Its
+`n` values are padded, so it is refused on purpose: go-lti follows the spec text over its example.
+
 ## `registration/`
 
 `request` is a Dynamic Registration request body (LTI Dynamic Registration 1.0 §3.5.2). A valid
@@ -20,8 +23,9 @@ localized `client_names`, the login, redirect and launch URIs that are `off_doma
 substring of its `error_description`.
 
 The spec's own request examples spell the grant `"implict"` and have a trailing comma.
-`invalid-spec-example.json` is the §3.5.2 example with only the comma removed, and it is refused for
-the typo; `valid-spec-example-with-implicit.json` also corrects the typo.
+`invalid-spec-example.json` is the §3.5.2 example with only the comma removed, and it is refused on
+purpose for the typo: the grant type is `implicit`. `valid-spec-example-with-implicit.json` also
+corrects the typo.
 
 ## `authentication_request/`
 

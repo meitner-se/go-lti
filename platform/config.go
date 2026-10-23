@@ -93,7 +93,7 @@ type Tool struct {
 	TargetLinkURI string
 	// JWKSURI is where the tool publishes its public keys.
 	JWKSURI string
-	// Domains are the tool's domain and secondary domains. Content it returns must be on them or
-	// a subdomain.
+	// Domains are the tool's domain and secondary domains. OnToolDomains checks a URL against them;
+	// Verify doesn't, since Deep Linking content may live anywhere.
 	Domains []string
 }

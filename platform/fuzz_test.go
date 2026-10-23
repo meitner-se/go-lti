@@ -78,6 +78,8 @@ func FuzzContentItems(f *testing.F) {
 	f.Add([]byte(`[{"type":"link"},{"type":"html","html":""}]`))
 	f.Add([]byte(`[{"type":"link","url":"https://evil.example/","URL":"https://tool.example.com/"}]`))
 	f.Add([]byte(`[{"type":"link","url":"https://a.example/","iframe":{"width":1.5}}]`))
+	f.Add([]byte(`[{"type":"link","url":"httPs://A"}]`))
+	f.Add([]byte(`[{"type":"link","url":"https://a.example.com/","iframe":{"src":"javascript:alert(1)","ſrc":"https://a.example.com/e"}}]`))
 
 	settings := lti.DeepLinkingSettings{AcceptTypes: allContentItemTypes, AcceptMultiple: true}
 
@@ -113,7 +115,7 @@ func FuzzContentItems(f *testing.F) {
 			}
 
 			for _, u := range rawURLs(exact) {
-				if !strings.HasPrefix(u, "https://") {
+				if !strings.EqualFold(u[:min(len(u), len("https://"))], "https://") {
 					t.Fatalf("accepted a non-https url %q", u)
 				}
 			}
