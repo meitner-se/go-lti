@@ -1,0 +1,216 @@
+version: "2"
+
+run:
+  timeout: 5m
+  relative-path-mode: gomod
+  modules-download-mode: readonly
+  allow-parallel-runners: true
+  concurrency: 0   # auto
+
+issues: # 0 = no limit
+  max-issues-per-linter: 0
+  max-same-issues: 0
+
+linters:
+  exclusions:
+    rules:
+      # Linters to exclude for test files
+      - path: _test\.go
+        linters:
+          - golines
+          - errorlint
+          - errcheck
+
+  # Start from the standard set and add web-API essentials.
+  default: standard
+  enable:
+    - bodyclose          # ensure http.Response.Body is closed
+    - contextcheck       # require ctx to flow through calls
+    - containedctx       # avoid storing ctx in structs
+    - noctx              # flag calls lacking context
+    - errcheck           # check returned errors
+    - errorlint          # idiomatic error wrapping/comparison
+    - errchkjson         # json encode/decode error checks
+    - musttag            # prevent missing json tags in API structs
+    - tagliatelle        # json tag naming convention
+    - tagalign           # nice-to-have: align tags
+    - gosmopolitan       # i18n-unsafe string ops (HTTP headers, etc.)
+    - govet              # std vet
+    - staticcheck        # SA checks (production-grade)
+    - ineffassign
+    - unused
+    - sloglint           # structured logging hygiene
+    - nolintlint         # enforce meaningful //nolint
+    - gocritic           # curated extra correctness/style checks
+    - gosec              # focused, HTTP-relevant rules (see settings below)
+    - nosprintfhostport  # avoid fmt.Sprintf("%s:%d", host, port)
+    - sqlclosecheck      # close rows/stmt
+    - rowserrcheck       # check rows.Err
+    - prealloc           # mild perf
+    - paralleltest
+    - tparallel
+    - thelper
+    - testifylint
+  disable:
+    # Too noisy for APIs by default; re-enable later if you want.
+    - funlen
+    - gocyclo
+    - cyclop
+    - lll
+    - wsl
+    - wsl_v5
+    - mnd
+    - gochecknoglobals
+    - gochecknoinits
+
+  settings:
+    gocritic:
+      # Keep to stable, correctness-focused checks.
+      disable-all: true
+      enabled-checks:
+        - appendCombine
+        - argOrder
+        - assignOp
+        - badCall
+        - badCond
+        - boolExprSimplify
+        - builtinShadowDecl
+        - captLocal
+        - caseOrder
+        - commentFormatting
+        - defaultCaseOrder
+        - emptyFallthrough
+        - equalFold
+        - evalOrder
+        - filepathJoin
+        - flagDeref
+        - hexLiteral
+        - httpNoBody
+        - ifElseChain
+        - importShadow
+        - indexAlloc
+        - mapKey
+        - newDeref
+        - offBy1
+        - preferFilepathJoin
+        - preferFprint
+        - preferWriteByte
+        - ptrToRefParam
+        - rangeExprCopy
+        - rangeValCopy
+        - regexpPattern
+        - returnAfterHttpError
+        - singleCaseSwitch
+        - sliceClear
+        - sloppyReassign
+        - sortSlice
+        - sprintfQuotedString
+        - stringXbytes
+        - stringsCompare
+        - switchTrue
+        - timeExprSimplify
+        - truncateCmp
+        - underef
+        - unnecessaryDefer
+        - valSwap
+
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+      allow-unused: false
+
+    tagliatelle:
+      # Enforce camelCase for JSON (typical API shape)
+      case:
+        rules:
+          json: goCamel
+          export: goCamel
+
+    sloglint:
+      # Enforce context-aware, attribute-based structured logs
+      args-on-sep-lines: true
+      attr-only: true
+      context: "all"
+      forbidden-keys: [time, level, msg, source]
+      key-naming-case: camel
+      msg-style: lowercased
+      no-global: "all"
+      no-mixed-args: true
+      no-raw-keys: false # If true, we'll have to use slog.Any(consts.ErrorKey, err) instead of slog.Error("error", err)
+      static-msg: true
+
+    gosec:
+      # Focus on HTTP/server-side findings that matter for APIs
+      includes:
+        - G101 # hardcoded creds
+        - G102 # bind all interfaces
+        - G103 # unsafe
+        - G104 # unchecked errors
+        - G107 # tainted URLs in HTTP requests
+        - G108 # /debug/pprof exposed
+        - G110 # decompression bomb
+        - G111 # dir traversal
+        - G112 # slowloris
+        - G114 # net/http serve without timeouts
+        - G201 # SQL via fmt
+        - G202 # SQL concat
+        - G203 # unescaped data in templates
+        - G304 # filepath from taint
+        - G401 # MD5/SHA1
+        - G402 # bad TLS settings
+        - G404 # insecure rand
+        - G601 # implicit aliasing from range
+      severity: medium
+      confidence: medium
+      concurrency: 0
+      config:
+        global:
+          audit: true
+          show-ignored: true
+
+    errcheck:
+      check-type-assertions: true
+      check-blank: true
+
+    errchkjson:
+      check-error-free-encoding: true
+      report-no-exported: false
+
+    paralleltest:
+      # Ignore missing calls to `t.Parallel()` and only report incorrect uses of it.
+      # Default: false
+      ignore-missing: true
+      # Ignore missing calls to `t.Parallel()` in subtests. Top-level tests are
+      # still required to have `t.Parallel`, but subtests are allowed to skip it.
+      # Default: false
+      ignore-missing-subtests: true
+
+formatters:
+  enable:
+    - gci
+    - gofmt
+    - gofumpt
+    - goimports
+    - golines
+  settings:
+    gci:
+      sections:
+        - standard
+        - default
+        - prefix(github.com/meitner-se/go-lti)
+    gofmt:
+      simplify: true
+    gofumpt:
+      extra-rules: true
+      module-path: github.com/meitner-se/go-lti
+    goimports:
+      local-prefixes:
+        - github.com/meitner-se/go-lti
+    golines:
+      max-len: 300
+      tab-len: 8
+      shorten-comments: true
+      chain-split-dots: true
+
+severity:
+  default: error
