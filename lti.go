@@ -58,11 +58,13 @@ func (e *Error) Error() string {
 }
 
 // StatusCode returns the HTTP status to answer with: 401 for invalid_client and invalid_token,
-// 400 otherwise.
+// 500 for server_error, 400 otherwise.
 func (e *Error) StatusCode() int {
 	switch e.Code {
 	case ErrorInvalidClient, ErrorInvalidToken:
 		return http.StatusUnauthorized
+	case ErrorServerError:
+		return http.StatusInternalServerError
 	default:
 		return http.StatusBadRequest
 	}

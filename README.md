@@ -117,14 +117,20 @@ Handle a Dynamic Registration:
 // Send the admin's browser to the tool's registration URL.
 startURL, err := cfg.RegistrationInitiationURL(toolRegistrationURL, openIDConfigurationURL, registrationToken)
 
-// At Endpoints.Registration, the tool posts its registration.
-reg, err := platform.ParseRegistration(body)
-review := reg.Review(cfg) // show this to an admin before activating the tool
+// Serve the OpenID configuration at the issuer plus platform.OpenIDConfigurationPath.
+discovery, err := cfg.OpenIDConfigurationHandler()
+mux.Handle("GET "+issuerPath+platform.OpenIDConfigurationPath, discovery)
+
+// At Endpoints.Registration, the tool posts its registration. Your Registrar checks the token,
+// saves the tool, and returns what it granted; the endpoint answers the tool per the spec.
+mux.Handle("POST "+registrationPath, &platform.RegistrationEndpoint{Registrar: registrar})
+
+// In Register, before activating the tool:
+review := reg.Review(cfg) // show this to an admin
 tool := reg.Tool(clientID)
-response := reg.Response(platform.RegistrationGrant{ClientID: clientID, DeploymentID: deploymentID})
 ```
 
-Serve `cfg.OpenIDConfiguration()` at the URL you hand tools for Dynamic Registration. The package examples on [pkg.go.dev](https://pkg.go.dev/github.com/meitner-se/go-lti) run as tests.
+A platform with its own HTTP handling can call `platform.ParseRegistration`, `reg.Response(grant)` and `cfg.OpenIDConfiguration()` itself. The package examples on [pkg.go.dev](https://pkg.go.dev/github.com/meitner-se/go-lti) run as tests.
 
 ## Errors
 
