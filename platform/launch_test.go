@@ -26,15 +26,9 @@ var testNow = time.Date(2026, 10, 22, 12, 0, 0, 0, time.UTC)
 
 func createTestConfig() Config {
 	return Config{
-		Issuer: "https://platform.example.com/lti",
-		Endpoints: Endpoints{
-			Authorization:  "https://platform.example.com/lti/authorize",
-			JWKS:           "https://platform.example.com/lti/jwks",
-			Registration:   "https://platform.example.com/lti/register",
-			Token:          "https://platform.example.com/oauth/token",
-			DeepLinkReturn: "https://platform.example.com/lti/deep-link-return",
-		},
-		Product: Product{GUID: "platform-1", Name: "Example LMS", FamilyCode: "example", Version: "1.0.0"},
+		Issuer:        "https://platform.example.com/lti",
+		TokenEndpoint: "https://platform.example.com/oauth/token",
+		Product:       Product{GUID: "platform-1", Name: "Example LMS", FamilyCode: "example", Version: "1.0.0"},
 	}
 }
 
@@ -371,7 +365,6 @@ func TestLauncher_IDTokenClaims_RejectsIncompleteDeepLinking(t *testing.T) {
 		platform func(cfg *Config)
 		settings func(s *lti.DeepLinkingSettings)
 	}{
-		{name: "no return url anywhere", platform: func(cfg *Config) { cfg.Endpoints.DeepLinkReturn = "" }},
 		{name: "an http return url", settings: func(s *lti.DeepLinkingSettings) { s.ReturnURL = "http://platform.example.com/lti/deep-link-return" }},
 		{name: "no accepted types", settings: func(s *lti.DeepLinkingSettings) { s.AcceptTypes = nil }},
 	}

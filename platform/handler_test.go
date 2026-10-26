@@ -36,10 +36,19 @@ func grantingRegistrar(tokens *[]string) Registrar {
 	})
 }
 
-func postRegistration(t *testing.T, handler http.Handler, authorization, body string) *httptest.ResponseRecorder {
+func newTestHandler(t *testing.T, h Handlers) http.Handler {
 	t.Helper()
 
-	req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/register", strings.NewReader(body))
+	handler, err := NewHandler(createTestConfig(), h)
+	require.NoError(t, err)
+
+	return handler
+}
+
+func serve(t *testing.T, handler http.Handler, method, path, authorization, body string) *httptest.ResponseRecorder {
+	t.Helper()
+
+	req := httptest.NewRequestWithContext(t.Context(), method, path, strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 
 	if authorization != "" {
@@ -50,6 +59,12 @@ func postRegistration(t *testing.T, handler http.Handler, authorization, body st
 	handler.ServeHTTP(w, req)
 
 	return w
+}
+
+func postRegistration(t *testing.T, handler http.Handler, authorization, body string) *httptest.ResponseRecorder {
+	t.Helper()
+
+	return serve(t, handler, http.MethodPost, "/lti"+PathRegistration, authorization, body)
 }
 
 func requireRegistrationErrorResponse(t *testing.T, w *httptest.ResponseRecorder, status int, code lti.ErrorCode, description string) {
@@ -64,51 +79,82 @@ func requireRegistrationErrorResponse(t *testing.T, w *httptest.ResponseRecorder
 	assert.Equal(t, map[string]any{"error": string(code), "error_description": description}, got)
 }
 
-func TestConfig_OpenIDConfigurationHandler(t *testing.T) {
+func TestNewHandler(t *testing.T) {
 	t.Parallel()
 
-	handler, err := createTestConfig().OpenIDConfigurationHandler()
-	require.NoError(t, err)
+	handler := newTestHandler(t, Handlers{Registrar: grantingRegistrar(&[]string{}), OnError: nil})
 
-	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, OpenIDConfigurationPath, nil)
-	w := httptest.NewRecorder()
-	handler.ServeHTTP(w, req)
+	t.Run("serves the OpenID configuration under the issuer's path", func(t *testing.T) {
+		t.Parallel()
 
-	require.Equal(t, http.StatusOK, w.Code)
-	assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
-	assert.Equal(t, "*", w.Header().Get("Access-Control-Allow-Origin"))
-	assert.Equal(t, "public, max-age=300", w.Header().Get("Cache-Control"))
+		w := serve(t, handler, http.MethodGet, "/lti"+PathOpenIDConfiguration, "", "")
 
-	want, err := createTestConfig().OpenIDConfiguration()
-	require.NoError(t, err)
+		require.Equal(t, http.StatusOK, w.Code)
+		assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
+		assert.Equal(t, "*", w.Header().Get("Access-Control-Allow-Origin"))
+		assert.Equal(t, "public, max-age=300", w.Header().Get("Cache-Control"))
 
-	var got OpenIDConfiguration
-	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &got))
-	assert.Equal(t, want, got)
+		want, err := createTestConfig().OpenIDConfiguration()
+		require.NoError(t, err)
+
+		var got OpenIDConfiguration
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &got))
+		assert.Equal(t, want, got)
+		assert.Equal(t, "https://platform.example.com/lti/register", got.RegistrationEndpoint)
+	})
+
+	t.Run("answers HEAD for the OpenID configuration", func(t *testing.T) {
+		t.Parallel()
+
+		assert.Equal(t, http.StatusOK, serve(t, handler, http.MethodHead, "/lti"+PathOpenIDConfiguration, "", "").Code)
+	})
 
 	t.Run("refuses other methods", func(t *testing.T) {
 		t.Parallel()
 
-		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, OpenIDConfigurationPath, nil)
-		w := httptest.NewRecorder()
-		handler.ServeHTTP(w, req)
-
-		assert.Equal(t, http.StatusMethodNotAllowed, w.Code)
-		assert.Equal(t, "GET, HEAD", w.Header().Get("Allow"))
+		assert.Equal(t, http.StatusMethodNotAllowed, serve(t, handler, http.MethodPost, "/lti"+PathOpenIDConfiguration, "", "").Code)
+		assert.Equal(t, http.StatusMethodNotAllowed, serve(t, handler, http.MethodGet, "/lti"+PathRegistration, "", "").Code)
 	})
 
-	t.Run("fails for a config without a registration endpoint", func(t *testing.T) {
+	t.Run("serves nothing else", func(t *testing.T) {
+		t.Parallel()
+
+		for _, path := range []string{PathRegistration, PathOpenIDConfiguration, "/lti", "/lti/unknown", "/other" + PathRegistration} {
+			assert.Equal(t, http.StatusNotFound, serve(t, handler, http.MethodGet, path, "", "").Code, path)
+		}
+	})
+
+	t.Run("serves at the root for an issuer without a path", func(t *testing.T) {
 		t.Parallel()
 
 		cfg := createTestConfig()
-		cfg.Endpoints.Registration = ""
+		cfg.Issuer = "https://platform.example.com/"
 
-		_, err := cfg.OpenIDConfigurationHandler()
+		rootHandler, err := NewHandler(cfg, Handlers{Registrar: grantingRegistrar(&[]string{}), OnError: nil})
+		require.NoError(t, err)
+
+		assert.Equal(t, http.StatusOK, serve(t, rootHandler, http.MethodGet, PathOpenIDConfiguration, "", "").Code)
+	})
+
+	t.Run("fails without a registrar or a token endpoint, or with braces in the issuer's path", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := NewHandler(createTestConfig(), Handlers{Registrar: nil, OnError: nil})
+		require.Error(t, err)
+
+		noToken := createTestConfig()
+		noToken.TokenEndpoint = ""
+		_, err = NewHandler(noToken, Handlers{Registrar: grantingRegistrar(&[]string{}), OnError: nil})
+		require.Error(t, err)
+
+		braces := createTestConfig()
+		braces.Issuer = "https://platform.example.com/{lti}"
+		_, err = NewHandler(braces, Handlers{Registrar: grantingRegistrar(&[]string{}), OnError: nil})
 		require.Error(t, err)
 	})
 }
 
-func TestRegistrationEndpoint(t *testing.T) {
+func TestNewHandler_Registration(t *testing.T) {
 	t.Parallel()
 
 	t.Run("a registration is answered 201 with what was granted", func(t *testing.T) {
@@ -116,9 +162,9 @@ func TestRegistrationEndpoint(t *testing.T) {
 
 		var tokens []string
 
-		endpoint := &RegistrationEndpoint{Registrar: grantingRegistrar(&tokens), OnError: nil}
+		handler := newTestHandler(t, Handlers{Registrar: grantingRegistrar(&tokens), OnError: nil})
 
-		w := postRegistration(t, endpoint, "bearer token-1", string(encodeRegistration(t, createTestRegistrationJSON())))
+		w := postRegistration(t, handler, "bearer token-1", string(encodeRegistration(t, createTestRegistrationJSON())))
 
 		require.Equal(t, http.StatusCreated, w.Code, w.Body.String())
 		assert.Equal(t, "no-store", w.Header().Get("Cache-Control"))
@@ -135,11 +181,9 @@ func TestRegistrationEndpoint(t *testing.T) {
 	t.Run("a refused token is invalid_token with a Bearer challenge", func(t *testing.T) {
 		t.Parallel()
 
-		var tokens []string
+		handler := newTestHandler(t, Handlers{Registrar: grantingRegistrar(&[]string{}), OnError: nil})
 
-		endpoint := &RegistrationEndpoint{Registrar: grantingRegistrar(&tokens), OnError: nil}
-
-		w := postRegistration(t, endpoint, "Bearer used", string(encodeRegistration(t, createTestRegistrationJSON())))
+		w := postRegistration(t, handler, "Bearer used", string(encodeRegistration(t, createTestRegistrationJSON())))
 
 		requireRegistrationErrorResponse(t, w, http.StatusUnauthorized, lti.ErrorInvalidToken, "the registration token is unknown or used")
 		assert.Equal(t, `Bearer error="invalid_token"`, w.Header().Get("WWW-Authenticate"))
@@ -151,9 +195,9 @@ func TestRegistrationEndpoint(t *testing.T) {
 		for _, authorization := range []string{"", "Basic dXNlcjpwYXNz", "Bearer", "token-1"} {
 			var tokens []string
 
-			endpoint := &RegistrationEndpoint{Registrar: grantingRegistrar(&tokens), OnError: nil}
+			handler := newTestHandler(t, Handlers{Registrar: grantingRegistrar(&tokens), OnError: nil})
 
-			w := postRegistration(t, endpoint, authorization, string(encodeRegistration(t, createTestRegistrationJSON())))
+			w := postRegistration(t, handler, authorization, string(encodeRegistration(t, createTestRegistrationJSON())))
 
 			assert.Equal(t, http.StatusUnauthorized, w.Code, authorization)
 			assert.Equal(t, []string{""}, tokens, authorization)
@@ -168,15 +212,15 @@ func TestRegistrationEndpoint(t *testing.T) {
 			logged []error
 		)
 
-		endpoint := &RegistrationEndpoint{
+		handler := newTestHandler(t, Handlers{
 			Registrar: grantingRegistrar(&tokens),
 			OnError:   func(_ *http.Request, err error) { logged = append(logged, err) },
-		}
+		})
 
 		body := createTestRegistrationJSON()
 		body["grant_types"] = []string{"implict", "client_credentials"}
 
-		w := postRegistration(t, endpoint, "Bearer token-1", string(encodeRegistration(t, body)))
+		w := postRegistration(t, handler, "Bearer token-1", string(encodeRegistration(t, body)))
 
 		requireRegistrationErrorResponse(t, w, http.StatusBadRequest, lti.ErrorInvalidClientMetadata, "grant_types must include implicit and client_credentials")
 		assert.Empty(t, w.Header().Get("WWW-Authenticate"))
@@ -189,12 +233,12 @@ func TestRegistrationEndpoint(t *testing.T) {
 
 		var tokens []string
 
-		endpoint := &RegistrationEndpoint{Registrar: grantingRegistrar(&tokens), OnError: nil}
+		handler := newTestHandler(t, Handlers{Registrar: grantingRegistrar(&tokens), OnError: nil})
 
 		body := createTestRegistrationJSON()
 		body["contacts"] = []string{strings.Repeat("a", MaxRegistrationBytes)}
 
-		w := postRegistration(t, endpoint, "Bearer token-1", string(encodeRegistration(t, body)))
+		w := postRegistration(t, handler, "Bearer token-1", string(encodeRegistration(t, body)))
 
 		requireRegistrationErrorResponse(t, w, http.StatusBadRequest, lti.ErrorInvalidClientMetadata, "registration request is larger than 1 MiB")
 		assert.Empty(t, tokens)
@@ -206,32 +250,16 @@ func TestRegistrationEndpoint(t *testing.T) {
 		var logged []error
 
 		failure := errors.New("database connection refused at 10.0.0.12")
-		endpoint := &RegistrationEndpoint{
+		handler := newTestHandler(t, Handlers{
 			Registrar: registrarFunc(func(context.Context, string, *Registration) (RegistrationGrant, error) {
 				return RegistrationGrant{}, failure
 			}),
 			OnError: func(_ *http.Request, err error) { logged = append(logged, err) },
-		}
+		})
 
-		w := postRegistration(t, endpoint, "Bearer token-1", string(encodeRegistration(t, createTestRegistrationJSON())))
+		w := postRegistration(t, handler, "Bearer token-1", string(encodeRegistration(t, createTestRegistrationJSON())))
 
 		requireRegistrationErrorResponse(t, w, http.StatusInternalServerError, lti.ErrorServerError, "the registration could not be saved; try again")
 		assert.Equal(t, []error{failure}, logged)
-	})
-
-	t.Run("refuses other methods", func(t *testing.T) {
-		t.Parallel()
-
-		var tokens []string
-
-		endpoint := &RegistrationEndpoint{Registrar: grantingRegistrar(&tokens), OnError: nil}
-
-		req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/register", nil)
-		w := httptest.NewRecorder()
-		endpoint.ServeHTTP(w, req)
-
-		assert.Equal(t, http.StatusMethodNotAllowed, w.Code)
-		assert.Equal(t, http.MethodPost, w.Header().Get("Allow"))
-		assert.Empty(t, tokens)
 	})
 }

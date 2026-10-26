@@ -2,19 +2,22 @@ package platform
 
 import (
 	"errors"
-	"fmt"
 	"strings"
 
 	"github.com/meitner-se/go-lti"
 	"github.com/meitner-se/go-lti/internal/urlcheck"
 )
 
-// Config describes the platform: its issuer, its endpoints and how it names itself to tools.
+// Config describes the platform: its issuer, its token endpoint and how it names itself to tools.
 // It holds no keys, so code that only builds URLs or documents can use it.
 type Config struct {
-	// Issuer is the iss of every platform message, an https URL.
-	Issuer    string
-	Endpoints Endpoints
+	// Issuer is the iss of every platform message, an https URL. The platform's endpoints are the
+	// issuer plus fixed paths (see Endpoints), and NewHandler serves them.
+	Issuer string
+	// TokenEndpoint is the OAuth 2.0 token endpoint for LTI services, an absolute https URL. It
+	// isn't under the issuer, since a platform usually shares it with other OAuth clients.
+	// Optional, but Dynamic Registration needs it.
+	TokenEndpoint string
 	// Product is the platform's product, for the tool_platform claim and the platform configuration.
 	Product Product
 	// Scopes are the service scopes the platform offers tools.
@@ -23,18 +26,47 @@ type Config struct {
 	Variables []lti.Variable
 }
 
+// The paths of the platform's endpoints under its issuer. Only PathOpenIDConfiguration is fixed by
+// a spec (OpenID Connect Discovery 1.0 §4); tools learn the others from the OpenID configuration,
+// a Dynamic Registration or a launch, never from the paths themselves.
+const (
+	PathOpenIDConfiguration = "/.well-known/openid-configuration"
+	PathRegistration        = "/register"
+	PathAuthorization       = "/authorize"
+	PathJWKS                = "/jwks"
+	PathDeepLinkReturn      = "/deep-link-return"
+)
+
 // Endpoints are the platform's absolute https URLs.
 type Endpoints struct {
+	// OpenIDConfiguration is the platform's OpenID configuration, the openid_configuration of a
+	// Dynamic Registration.
+	OpenIDConfiguration string
 	// Authorization is the OIDC authorization endpoint tools send the authentication request to.
 	Authorization string
 	// JWKS is where the platform's public keys are published.
 	JWKS string
-	// Registration is the Dynamic Registration endpoint. Optional.
+	// Registration is the Dynamic Registration endpoint.
 	Registration string
-	// Token is the OAuth 2.0 token endpoint for LTI services. Optional.
+	// Token is the OAuth 2.0 token endpoint for LTI services: Config.TokenEndpoint.
 	Token string
-	// DeepLinkReturn is where tools post Deep Linking responses by default. Optional.
+	// DeepLinkReturn is where tools post Deep Linking responses by default.
 	DeepLinkReturn string
+}
+
+// Endpoints returns the platform's endpoints: the issuer plus each endpoint's path, and the token
+// endpoint as configured.
+func (c Config) Endpoints() Endpoints {
+	issuer := strings.TrimSuffix(c.Issuer, "/")
+
+	return Endpoints{
+		OpenIDConfiguration: issuer + PathOpenIDConfiguration,
+		Authorization:       issuer + PathAuthorization,
+		JWKS:                issuer + PathJWKS,
+		Registration:        issuer + PathRegistration,
+		Token:               c.TokenEndpoint,
+		DeepLinkReturn:      issuer + PathDeepLinkReturn,
+	}
 }
 
 // Product is the platform's product (LTI 1.3 §5.4.2).
@@ -48,30 +80,16 @@ type Product struct {
 	URL          string
 }
 
-// Validate checks that the issuer, the authorization and JWKS endpoints and the product GUID are
-// set, and that every endpoint is an absolute https URL.
+// Validate checks that the issuer is an https URL without a query or fragment, that the token
+// endpoint, when set, is an absolute https URL, and that the product GUID is set.
 func (c Config) Validate() error {
 	// Security Framework §5.1.2: the issuer is an https URL with no query or fragment.
 	if u, ok := urlcheck.ParseHTTPS(c.Issuer); !ok || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" || strings.Contains(c.Issuer, "#") {
 		return errors.New("lti: config issuer must be an absolute https url without a query or fragment")
 	}
 
-	required := map[string]string{"authorization": c.Endpoints.Authorization, "jwks": c.Endpoints.JWKS}
-	for name, endpoint := range required {
-		if !urlcheck.IsHTTPS(endpoint) {
-			return fmt.Errorf("lti: config %s endpoint must be an absolute https url", name)
-		}
-	}
-
-	optional := map[string]string{
-		"registration":     c.Endpoints.Registration,
-		"token":            c.Endpoints.Token,
-		"deep link return": c.Endpoints.DeepLinkReturn,
-	}
-	for name, endpoint := range optional {
-		if endpoint != "" && !urlcheck.IsHTTPS(endpoint) {
-			return fmt.Errorf("lti: config %s endpoint must be an absolute https url", name)
-		}
+	if c.TokenEndpoint != "" && !urlcheck.IsHTTPS(c.TokenEndpoint) {
+		return errors.New("lti: config token endpoint must be an absolute https url")
 	}
 
 	if c.Product.GUID == "" || len(c.Product.GUID) > maxIdentifierLength {

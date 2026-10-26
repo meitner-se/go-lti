@@ -65,8 +65,7 @@ func TestConfig_OpenIDConfiguration_Rejects(t *testing.T) {
 
 	for _, change := range []func(cfg *Config){
 		func(cfg *Config) { cfg.Issuer = "" },
-		func(cfg *Config) { cfg.Endpoints.Registration = "" },
-		func(cfg *Config) { cfg.Endpoints.Token = "" },
+		func(cfg *Config) { cfg.TokenEndpoint = "" },
 		func(cfg *Config) { cfg.Product.FamilyCode = "" },
 		func(cfg *Config) { cfg.Product.Version = "" },
 	} {

@@ -18,15 +18,9 @@ import (
 
 // exampleConfig is how a platform describes itself. Every value is the platform's own choice.
 var exampleConfig = platform.Config{
-	Issuer: "https://lms.example.com/lti",
-	Endpoints: platform.Endpoints{
-		Authorization:  "https://lms.example.com/lti/authorize",
-		JWKS:           "https://lms.example.com/lti/jwks",
-		Registration:   "https://lms.example.com/lti/register",
-		Token:          "https://lms.example.com/oauth/token",
-		DeepLinkReturn: "https://lms.example.com/lti/deep-link-return",
-	},
-	Product: platform.Product{GUID: "lms-1", Name: "Example LMS", FamilyCode: "example-lms", Version: "1.0.0"},
+	Issuer:        "https://lms.example.com/lti",
+	TokenEndpoint: "https://lms.example.com/oauth/token",
+	Product:       platform.Product{GUID: "lms-1", Name: "Example LMS", FamilyCode: "example-lms", Version: "1.0.0"},
 }
 
 // A launch is three requests: the platform sends the browser to the tool, the tool sends it back
@@ -65,7 +59,7 @@ func Example_launch() {
 
 	fmt.Println(loginURL)
 
-	// 2. At Endpoints.Authorization, the tool's request comes back.
+	// 2. At Endpoints().Authorization, the tool's request comes back.
 	req, err := platform.ParseAuthenticationRequest(url.Values{
 		"scope": {"openid"}, "response_type": {"id_token"}, "response_mode": {"form_post"}, "prompt": {"none"},
 		"client_id": {"client-1"}, "redirect_uri": {"https://tool.example.com/lti/launch"},
