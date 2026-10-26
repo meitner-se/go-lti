@@ -333,13 +333,16 @@ func authenticationForm(w http.ResponseWriter, r *http.Request) (url.Values, err
 		return r.URL.Query(), nil
 	}
 
-	r.Body = http.MaxBytesReader(w, r.Body, maxAuthenticationFormBytes)
+	// ParseForm also parses the query, so a malformed query would reject a valid body; parse a copy without it.
+	bodyOnly := r.Clone(r.Context())
+	bodyOnly.URL.RawQuery = ""
+	bodyOnly.Body = http.MaxBytesReader(w, r.Body, maxAuthenticationFormBytes)
 
-	if err := r.ParseForm(); err != nil {
+	if err := bodyOnly.ParseForm(); err != nil {
 		return nil, err
 	}
 
-	return r.PostForm, nil
+	return bodyOnly.PostForm, nil
 }
 
 // cmpErr returns the first of errs that isn't nil.
