@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"strings"
 	"time"
 
@@ -129,7 +130,10 @@ func (l *Launcher) idTokenClaims(tool Tool, nonce string, msg lti.Message, now t
 
 	claims := map[string]any{}
 
-	var common lti.Common
+	var (
+		common lti.Common
+		link   *lti.ResourceLink
+	)
 
 	switch m := msg.(type) {
 	case *lti.ResourceLinkRequest:
@@ -142,6 +146,7 @@ func (l *Launcher) idTokenClaims(tool Tool, nonce string, msg lti.Message, now t
 		}
 
 		common = m.Common
+		link = &m.ResourceLink
 		claims[lti.ClaimResourceLink] = m.ResourceLink
 	case *lti.DeepLinkingRequest:
 		if m == nil {
@@ -196,7 +201,7 @@ func (l *Launcher) idTokenClaims(tool Tool, nonce string, msg lti.Message, now t
 	}
 
 	if len(common.Custom) > 0 {
-		claims[lti.ClaimCustom] = common.Custom
+		claims[lti.ClaimCustom] = lti.Substitute(common.Custom, substitutionValues(common, link), common.Sharing)
 	}
 
 	if common.Sharing.Name {
@@ -227,6 +232,58 @@ func (l *Launcher) idTokenClaims(tool Tool, nonce string, msg lti.Message, now t
 	}
 
 	return claims, nil
+}
+
+// LaunchVariables returns the substitution variables a launch supports, for Config.Variables. Each
+// takes the message's value, else the one in Common.Variables, else "" (LTI 1.3 Appendix B).
+func LaunchVariables() []lti.Variable {
+	return []lti.Variable{
+		lti.VariableUserID,
+		lti.VariablePersonNameFull, lti.VariablePersonNameGiven, lti.VariablePersonNameFamily, lti.VariablePersonEmailPrimary,
+		lti.VariableContextID, lti.VariableContextTitle, lti.VariableContextLabel,
+		lti.VariableResourceLinkID, lti.VariableResourceLinkTitle, lti.VariableResourceLinkDescription,
+		lti.VariableMessageLocale,
+	}
+}
+
+// substitutionValues returns the variable values for common's custom parameters: "" for each of
+// LaunchVariables, overridden by common.Variables, overridden by the values the message carries.
+// link is the resource link, if the message has one.
+func substitutionValues(common lti.Common, link *lti.ResourceLink) map[lti.Variable]string {
+	values := map[lti.Variable]string{}
+	for _, variable := range LaunchVariables() {
+		values[variable] = ""
+	}
+
+	maps.Copy(values, common.Variables)
+
+	// An empty value is one the message doesn't carry, so it doesn't override Variables.
+	set := func(variable lti.Variable, value string) {
+		if value != "" {
+			values[variable] = value
+		}
+	}
+
+	set(lti.VariableUserID, common.Subject)
+	set(lti.VariablePersonNameFull, common.User.Name)
+	set(lti.VariablePersonNameGiven, common.User.GivenName)
+	set(lti.VariablePersonNameFamily, common.User.FamilyName)
+	set(lti.VariablePersonEmailPrimary, common.User.Email)
+	set(lti.VariableMessageLocale, common.Presentation.Locale)
+
+	if common.Context != nil {
+		set(lti.VariableContextID, common.Context.ID)
+		set(lti.VariableContextTitle, common.Context.Title)
+		set(lti.VariableContextLabel, common.Context.Label)
+	}
+
+	if link != nil {
+		set(lti.VariableResourceLinkID, link.ID)
+		set(lti.VariableResourceLinkTitle, link.Title)
+		set(lti.VariableResourceLinkDescription, link.Description)
+	}
+
+	return values
 }
 
 func validateCommon(c lti.Common, targetLinkURI string) error {

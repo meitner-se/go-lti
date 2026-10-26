@@ -34,6 +34,8 @@ cfg := platform.Config{
 	Paths:         platform.Paths{Authorization: "/authorize", JWKS: "/jwks", Registration: "/register", DeepLinkReturn: "/deep-link-return"},
 	TokenEndpoint: "https://lms.example.com/oauth/token",
 	Product: platform.Product{GUID: "lms-1", Name: "Example LMS", FamilyCode: "example-lms", Version: "1.0.0"},
+	// The substitution variables a launch fills in, plus any you supply in lti.Common.Variables.
+	Variables: platform.LaunchVariables(),
 }
 ```
 
@@ -58,7 +60,12 @@ handler, err := platform.NewHandler(cfg, platform.Handlers{
 			Tool:       tool,
 			Initiation: initiation,
 			Message: &lti.ResourceLinkRequest{
-				Common:       lti.Common{DeploymentID: deploymentID, Subject: sub, Roles: []lti.Role{lti.RoleLearner}},
+				Common: lti.Common{
+					DeploymentID: deploymentID,
+					Subject:      sub,
+					Roles:        []lti.Role{lti.RoleLearner},
+					Custom:       linkCustomParameters, // as configured, such as {"course": "$Context.id"}
+				},
 				ResourceLink: lti.ResourceLink{ID: linkID},
 			},
 		}, nil
@@ -68,7 +75,7 @@ handler, err := platform.NewHandler(cfg, platform.Handlers{
 
 A platform with its own HTTP handling can call `platform.ParseAuthenticationRequest`, `platform.NewLauncher(cfg, keys)`, `launcher.Respond`, `launcher.RespondError` and `launcher.JWKS` itself.
 
-Fill custom parameters with `lti.Substitute(custom, values, sharing)`: variables about the user are only filled in when the tool's sharing allows.
+Pass custom parameters as configured: the launch substitutes their variables (LTI 1.3 Appendix B) from the message itself, such as `$Context.id` from `Context` and `$Person.name.full` from `User`, so a custom parameter always agrees with the claim next to it. Supply variables the message doesn't carry, such as `$User.username`, in `Common.Variables`. A variable from `platform.LaunchVariables()` without a value in either place is sent as an empty string, as Appendix B asks of a supported variable; any other variable without a value stays as it is, which tells the tool the platform doesn't support it. Variables about the user are only filled in when `Sharing` allows, and are sent as an empty string when it doesn't, even when you supply them.
 
 Verify a tool's Deep Linking response:
 

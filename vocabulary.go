@@ -131,9 +131,12 @@ const (
 // values, or that only contain one, stay as they are, as the spec requires for variables the
 // platform doesn't support; put a supported variable that has no value in values as "".
 //
-// Variables about the user are only replaced when sharing allows: Person.name.* and User.username
-// need Name, Person.email.* needs Email, and the other Person.* variables are never replaced, since
-// Sharing has no setting for them.
+// A launch already substitutes Common.Custom; Substitute is for custom parameters sent elsewhere.
+//
+// A variable about the user that sharing doesn't allow is replaced by "", so the tool learns nothing
+// about the user and still sees a supported variable: Person.name.* and User.username need Name,
+// Person.email.* needs Email, and the other Person.* variables are always "", since Sharing has no
+// setting for them. Such a variable missing from values still stays as it is.
 func Substitute(custom map[string]string, values map[Variable]string, sharing Sharing) map[string]string {
 	if custom == nil {
 		return nil
@@ -141,9 +144,12 @@ func Substitute(custom map[string]string, values map[Variable]string, sharing Sh
 
 	out := make(map[string]string, len(custom))
 	for name, value := range custom {
-		if variable, ok := strings.CutPrefix(value, "$"); ok && sharing.allows(Variable(variable)) {
+		if variable, ok := strings.CutPrefix(value, "$"); ok {
 			if substituted, ok := values[Variable(variable)]; ok {
 				value = substituted
+				if !sharing.allows(Variable(variable)) {
+					value = ""
+				}
 			}
 		}
 
@@ -153,7 +159,7 @@ func Substitute(custom map[string]string, values map[Variable]string, sharing Sh
 	return out
 }
 
-// allows reports whether sharing lets variable be replaced.
+// allows reports whether sharing lets the tool have variable's value.
 func (s Sharing) allows(variable Variable) bool {
 	switch {
 	case strings.HasPrefix(string(variable), "Person.name.") || variable == VariableUserUsername:

@@ -1,0 +1,10 @@
+{
+  "description": "With names not shared, a name the caller supplies for $Person.name.full is withheld as an empty string.",
+  "message_type": "LtiResourceLinkRequest",
+  "sub": "3f2a8c1e-7d4b-4e8f-9a6c-1b2d3e4f5a6b",
+  "resource_link": {"id": "link-1"},
+  "sharing": {"name": false, "email": true},
+  "variables": {"Person.name.full": "Ada Lovelace"},
+  "custom": {"full": "$Person.name.full"},
+  "expect_custom": {"full": ""}
+}

@@ -168,7 +168,7 @@ func TestSubstitute(t *testing.T) {
 	assert.Nil(t, lti.Substitute(nil, nil, lti.Sharing{}))
 }
 
-func TestRegression_SubstituteKeepsPersonalDataUnlessShared(t *testing.T) {
+func TestRegression_SubstituteWithholdsPersonalDataUnlessShared(t *testing.T) {
 	t.Parallel()
 
 	custom := map[string]string{
@@ -176,6 +176,7 @@ func TestRegression_SubstituteKeepsPersonalDataUnlessShared(t *testing.T) {
 		"name":     "$Person.name.full",
 		"username": "$User.username",
 		"phone":    "$Person.phone.mobile",
+		"home":     "$Person.phone.home",
 		"course":   "$Context.id",
 	}
 	values := map[lti.Variable]string{
@@ -187,18 +188,20 @@ func TestRegression_SubstituteKeepsPersonalDataUnlessShared(t *testing.T) {
 	}
 
 	assert.Equal(t, map[string]string{
-		"email":    "$Person.email.primary",
-		"name":     "$Person.name.full",
-		"username": "$User.username",
-		"phone":    "$Person.phone.mobile",
+		"email":    "",
+		"name":     "",
+		"username": "",
+		"phone":    "",
+		"home":     "$Person.phone.home",
 		"course":   "course-1",
-	}, lti.Substitute(custom, values, lti.Sharing{}), "nothing about the user is shared by default")
+	}, lti.Substitute(custom, values, lti.Sharing{}), "nothing about the user is shared by default; an unsupported variable stays as it is")
 
 	assert.Equal(t, map[string]string{
-		"email":    "$Person.email.primary",
+		"email":    "",
 		"name":     "Ada Lovelace",
 		"username": "ada",
-		"phone":    "$Person.phone.mobile",
+		"phone":    "",
+		"home":     "$Person.phone.home",
 		"course":   "course-1",
 	}, lti.Substitute(custom, values, lti.Sharing{Name: true}))
 
@@ -206,9 +209,10 @@ func TestRegression_SubstituteKeepsPersonalDataUnlessShared(t *testing.T) {
 		"email":    "student@school.example",
 		"name":     "Ada Lovelace",
 		"username": "ada",
-		"phone":    "$Person.phone.mobile",
+		"phone":    "",
+		"home":     "$Person.phone.home",
 		"course":   "course-1",
-	}, lti.Substitute(custom, values, lti.Sharing{Name: true, Email: true}), "other personal data has no sharing setting, so it is never replaced")
+	}, lti.Substitute(custom, values, lti.Sharing{Name: true, Email: true}), "other personal data has no sharing setting, so it is never shared")
 }
 
 func TestStaticKeys_Rejects(t *testing.T) {

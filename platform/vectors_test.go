@@ -201,3 +201,64 @@ func TestParseAuthenticationRequest_Vectors(t *testing.T) {
 		})
 	}
 }
+
+//nolint:tagliatelle // the vector files are shared with other languages and use snake_case
+type substitutionVector struct {
+	Description  string             `json:"description"`
+	MessageType  lti.MessageType    `json:"message_type"`
+	Subject      string             `json:"sub"`
+	Context      *lti.LaunchContext `json:"context"`
+	ResourceLink lti.ResourceLink   `json:"resource_link"`
+	Locale       string             `json:"locale"`
+	User         struct {
+		Name       string `json:"name"`
+		GivenName  string `json:"given_name"`
+		FamilyName string `json:"family_name"`
+		Email      string `json:"email"`
+	} `json:"user"`
+	Sharing struct {
+		Name  bool `json:"name"`
+		Email bool `json:"email"`
+	} `json:"sharing"`
+	Variables    map[lti.Variable]string `json:"variables"`
+	Custom       map[string]string       `json:"custom"`
+	ExpectCustom map[string]string       `json:"expect_custom"`
+}
+
+func TestLauncher_SubstitutesCustom_Vectors(t *testing.T) {
+	t.Parallel()
+
+	launcher := createTestLauncher(t, ltitest.NewSigningKey(t))
+
+	for name, v := range loadVectors[substitutionVector](t, "substitution") {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			common := lti.Common{
+				DeploymentID: "deployment-1",
+				Subject:      v.Subject,
+				Context:      v.Context,
+				Presentation: lti.Presentation{Locale: v.Locale},
+				Custom:       v.Custom,
+				Variables:    v.Variables,
+				User:         lti.User(v.User),
+				Sharing:      lti.Sharing(v.Sharing),
+			}
+
+			var msg lti.Message
+
+			switch v.MessageType {
+			case lti.MessageTypeResourceLinkRequest:
+				msg = &lti.ResourceLinkRequest{Common: common, ResourceLink: v.ResourceLink}
+			case lti.MessageTypeDeepLinkingRequest:
+				msg = &lti.DeepLinkingRequest{Common: common, Settings: createTestDeepLinkingSettings()}
+			default:
+				t.Fatalf("unknown message_type %q", v.MessageType)
+			}
+
+			claims, err := launcher.idTokenClaims(createTestTool(), "nonce-1", msg, testNow)
+			require.NoError(t, err, v.Description)
+			assert.Equal(t, v.ExpectCustom, claims[lti.ClaimCustom], v.Description)
+		})
+	}
+}
