@@ -164,7 +164,7 @@ func TestLauncher_IDTokenClaims_ResourceLinkRequest(t *testing.T) {
 		},
 		"https://purl.imsglobal.org/spec/lti/claim/resource_link": {"id": "link-1", "title": "Cell quiz"},
 		"https://purl.imsglobal.org/spec/lti/claim/launch_presentation": {"document_target": "iframe", "locale": "sv"},
-		"https://purl.imsglobal.org/spec/lti/claim/custom": {"course": "course-1", "quiz": "Cell quiz", "name": "$Person.name.full"},
+		"https://purl.imsglobal.org/spec/lti/claim/custom": {"course": "course-1", "quiz": "Cell quiz", "name": ""},
 		"https://purl.imsglobal.org/spec/lti/claim/tool_platform": {
 			"guid": "platform-1",
 			"name": "Example LMS",
@@ -357,7 +357,7 @@ func TestLauncher_IDTokenClaims_SuppliedVariables(t *testing.T) {
 	}, claims[lti.ClaimCustom], "the message's own values win; the rest come from Variables or stay as they are")
 }
 
-func TestRegression_LaunchKeepsPersonalVariablesUnlessShared(t *testing.T) {
+func TestRegression_LaunchWithholdsPersonalVariablesUnlessShared(t *testing.T) {
 	t.Parallel()
 
 	launcher := createTestLauncher(t, ltitest.NewSigningKey(t))
@@ -369,6 +369,7 @@ func TestRegression_LaunchKeepsPersonalVariablesUnlessShared(t *testing.T) {
 		"email":    "$Person.email.primary",
 		"username": "$User.username",
 		"phone":    "$Person.phone.mobile",
+		"home":     "$Person.phone.home",
 		"user":     "$User.id",
 	}
 	msg.Variables = map[lti.Variable]string{lti.VariableUserUsername: "ada", "Person.phone.mobile": "+46700000000"}
@@ -377,11 +378,12 @@ func TestRegression_LaunchKeepsPersonalVariablesUnlessShared(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, map[string]string{
-		"name":     "$Person.name.full",
-		"given":    "$Person.name.given",
-		"email":    "$Person.email.primary",
-		"username": "$User.username",
-		"phone":    "$Person.phone.mobile",
+		"name":     "",
+		"given":    "",
+		"email":    "",
+		"username": "",
+		"phone":    "",
+		"home":     "$Person.phone.home",
 		"user":     "3f2a8c1e-7d4b-4e8f-9a6c-1b2d3e4f5a6b",
 	}, claims[lti.ClaimCustom], "nothing about the user is shared by default")
 
@@ -391,13 +393,30 @@ func TestRegression_LaunchKeepsPersonalVariablesUnlessShared(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Equal(t, map[string]string{
-		"name":     "$Person.name.full",
-		"given":    "$Person.name.given",
+		"name":     "",
+		"given":    "",
 		"email":    "ada@example.com",
-		"username": "$User.username",
-		"phone":    "$Person.phone.mobile",
+		"username": "",
+		"phone":    "",
+		"home":     "$Person.phone.home",
 		"user":     "3f2a8c1e-7d4b-4e8f-9a6c-1b2d3e4f5a6b",
 	}, claims[lti.ClaimCustom])
+}
+
+func TestRegression_LaunchWithholdsASuppliedNameUnlessShared(t *testing.T) {
+	t.Parallel()
+
+	launcher := createTestLauncher(t, ltitest.NewSigningKey(t))
+
+	msg := createTestResourceLinkRequest()
+	msg.User = lti.User{}
+	msg.Custom = map[string]string{"name": "$Person.name.full"}
+	msg.Variables = map[lti.Variable]string{lti.VariablePersonNameFull: "Ada Lovelace"}
+
+	claims, err := launcher.idTokenClaims(createTestTool(), "nonce-1", msg, testNow)
+	require.NoError(t, err)
+
+	assert.Equal(t, map[string]string{"name": ""}, claims[lti.ClaimCustom])
 }
 
 func TestRegression_LaunchResolvesSupportedVariablesWithoutAValueToEmpty(t *testing.T) {

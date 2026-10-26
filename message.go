@@ -80,7 +80,7 @@ type Common struct {
 	// their variables (LTI 1.3 §5.4.6, Appendix B). A variable in platform.LaunchVariables takes the
 	// message's value, such as Context.id from Context, else its value in Variables, else "". Any
 	// other variable takes its value in Variables, or stays as it is to tell the tool the platform
-	// doesn't support it.
+	// doesn't support it. A variable about the user that Sharing doesn't allow is "".
 	Custom map[string]string
 	// Variables are values for substitution variables the message doesn't carry, such as
 	// User.username. Where the message carries a variable's value, that value wins.
@@ -135,11 +135,13 @@ type User struct {
 	Email      string
 }
 
-// Sharing is which personal claims the platform may send a tool.
+// Sharing is which personal data the platform may send a tool, in claims and in custom parameters.
+// A custom parameter for data it doesn't allow is sent as "".
 type Sharing struct {
-	// Name allows name, given_name and family_name.
+	// Name allows name, given_name and family_name, and the Person.name.* and User.username
+	// variables.
 	Name bool
-	// Email allows email.
+	// Email allows email and the Person.email.* variables.
 	Email bool
 }
 

@@ -62,5 +62,7 @@ value that is exactly `$` and a variable name is substituted. A variable the pla
 `Context.id`, `Context.title`, `Context.label`, `ResourceLink.id`, `ResourceLink.title`,
 `ResourceLink.description` and `Message.locale`) takes the message's value, else the supplied
 one, else an empty string (LTI 1.3 Appendix B). Any other variable takes the supplied value or
-stays as it is. `Person.*` and `User.username` are only substituted when `sharing` allows the
-user's name or email, and the other `Person.*` variables never are. Every case is valid.
+stays as it is. A variable about the user that `sharing` doesn't allow takes an empty string
+instead of its value: `Person.name.*` and `User.username` need `name`, `Person.email.*` needs
+`email`, and the other `Person.*` variables are always empty, or stay as they are when not
+supplied. Every case is valid.
