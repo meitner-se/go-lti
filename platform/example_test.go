@@ -19,6 +19,7 @@ import (
 // exampleConfig is how a platform describes itself. Every value is the platform's own choice.
 var exampleConfig = platform.Config{
 	Issuer:        "https://lms.example.com/lti",
+	Paths:         platform.Paths{Authorization: "/authorize", JWKS: "/jwks", Registration: "/register", DeepLinkReturn: "/deep-link-return"},
 	TokenEndpoint: "https://lms.example.com/oauth/token",
 	Product:       platform.Product{GUID: "lms-1", Name: "Example LMS", FamilyCode: "example-lms", Version: "1.0.0"},
 }

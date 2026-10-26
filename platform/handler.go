@@ -31,7 +31,7 @@ type Handlers struct {
 //
 //   - GET PathOpenIDConfiguration: the OpenID configuration, to any origin, cacheable for five
 //     minutes.
-//   - POST PathRegistration: Dynamic Registration (LTI Dynamic Registration 1.0 §3.5–§3.6).
+//   - POST Paths.Registration: Dynamic Registration (LTI Dynamic Registration 1.0 §3.5–§3.6).
 //
 // Mount it to receive every request under the issuer's path, with the path unchanged. Any other
 // path is a 404 and any other method a 405. It fails when cfg can't make an OpenID configuration
@@ -63,7 +63,7 @@ func NewHandler(cfg Config, h Handlers) (http.Handler, error) {
 
 	mux := http.NewServeMux()
 	mux.Handle("GET "+issuer.Path+PathOpenIDConfiguration, openIDConfigurationHandler(discovery))
-	mux.Handle("POST "+issuer.Path+PathRegistration, &registrationEndpoint{register: h.Register, onError: h.OnError})
+	mux.Handle("POST "+issuer.Path+cfg.Paths.Registration, &registrationEndpoint{register: h.Register, onError: h.OnError})
 
 	return mux, nil
 }

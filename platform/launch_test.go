@@ -27,6 +27,7 @@ var testNow = time.Date(2026, 10, 22, 12, 0, 0, 0, time.UTC)
 func createTestConfig() Config {
 	return Config{
 		Issuer:        "https://platform.example.com/lti",
+		Paths:         Paths{Authorization: "/authorize", JWKS: "/jwks", Registration: "/register", DeepLinkReturn: "/deep-link-return"},
 		TokenEndpoint: "https://platform.example.com/oauth/token",
 		Product:       Product{GUID: "platform-1", Name: "Example LMS", FamilyCode: "example", Version: "1.0.0"},
 	}

@@ -31,6 +31,7 @@ Describe your platform once:
 ```go
 cfg := platform.Config{
 	Issuer:        "https://lms.example.com/lti",
+	Paths:         platform.Paths{Authorization: "/authorize", JWKS: "/jwks", Registration: "/register", DeepLinkReturn: "/deep-link-return"},
 	TokenEndpoint: "https://lms.example.com/oauth/token",
 	Product: platform.Product{GUID: "lms-1", Name: "Example LMS", FamilyCode: "example-lms", Version: "1.0.0"},
 }
@@ -121,7 +122,7 @@ review := reg.Review(cfg) // show this to an admin
 tool := reg.Tool(clientID)
 ```
 
-The platform's endpoints are the issuer plus fixed paths (`platform.PathRegistration` and the others), listed by `cfg.Endpoints()`. Only the OpenID configuration's path is set by a spec; tools learn the rest from the OpenID configuration, the registration response or a launch, so they never need to know them in advance. Once a tool has registered, though, it keeps the URLs it was given, so a platform can't move them. The package examples on [pkg.go.dev](https://pkg.go.dev/github.com/meitner-se/go-lti) run as tests.
+The platform's endpoints are the issuer plus `cfg.Paths`, listed by `cfg.Endpoints()`. Only the OpenID configuration's path is set by a spec (`platform.PathOpenIDConfiguration`); you choose the others, and tools learn them from the OpenID configuration, the registration response or a launch. Once a tool has registered it keeps the URLs it was given, so don't change a path after that. The package examples on [pkg.go.dev](https://pkg.go.dev/github.com/meitner-se/go-lti) run as tests.
 
 ## Errors
 

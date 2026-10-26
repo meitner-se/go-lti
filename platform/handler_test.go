@@ -57,7 +57,7 @@ func serve(t *testing.T, handler http.Handler, method, path, authorization, body
 func postRegistration(t *testing.T, handler http.Handler, authorization, body string) *httptest.ResponseRecorder {
 	t.Helper()
 
-	return serve(t, handler, http.MethodPost, "/lti"+PathRegistration, authorization, body)
+	return serve(t, handler, http.MethodPost, "/lti/register", authorization, body)
 }
 
 func requireRegistrationErrorResponse(t *testing.T, w *httptest.ResponseRecorder, status int, code lti.ErrorCode, description string) {
@@ -106,15 +106,32 @@ func TestNewHandler(t *testing.T) {
 		t.Parallel()
 
 		assert.Equal(t, http.StatusMethodNotAllowed, serve(t, handler, http.MethodPost, "/lti"+PathOpenIDConfiguration, "", "").Code)
-		assert.Equal(t, http.StatusMethodNotAllowed, serve(t, handler, http.MethodGet, "/lti"+PathRegistration, "", "").Code)
+		assert.Equal(t, http.StatusMethodNotAllowed, serve(t, handler, http.MethodGet, "/lti/register", "", "").Code)
 	})
 
 	t.Run("serves nothing else", func(t *testing.T) {
 		t.Parallel()
 
-		for _, path := range []string{PathRegistration, PathOpenIDConfiguration, "/lti", "/lti/unknown", "/other" + PathRegistration} {
+		for _, path := range []string{"/register", PathOpenIDConfiguration, "/lti", "/lti/unknown", "/other/register"} {
 			assert.Equal(t, http.StatusNotFound, serve(t, handler, http.MethodGet, path, "", "").Code, path)
 		}
+	})
+
+	t.Run("serves registration at the configured path", func(t *testing.T) {
+		t.Parallel()
+
+		cfg := createTestConfig()
+		cfg.Paths.Registration = "/dynamic-registration"
+
+		var tokens []string
+
+		customHandler, err := NewHandler(cfg, Handlers{Register: granting(&tokens), OnError: nil})
+		require.NoError(t, err)
+
+		body := string(encodeRegistration(t, createTestRegistrationJSON()))
+		assert.Equal(t, http.StatusCreated, serve(t, customHandler, http.MethodPost, "/lti/dynamic-registration", "Bearer token-1", body).Code)
+		assert.Equal(t, http.StatusNotFound, serve(t, customHandler, http.MethodPost, "/lti/register", "Bearer token-1", body).Code)
+		assert.Equal(t, []string{"token-1"}, tokens)
 	})
 
 	t.Run("serves at the root for an issuer without a path", func(t *testing.T) {
