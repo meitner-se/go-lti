@@ -421,6 +421,26 @@ func TestNewHandler_Launch(t *testing.T) {
 		assert.Equal(t, []string{"launch-hint-1"}, hints, "a POST's query never reaches Launch")
 	})
 
+	t.Run("a malformed query doesn't reject a POSTed request", func(t *testing.T) {
+		t.Parallel()
+
+		for _, query := range []string{"a;b", "%ZZ"} {
+			var hints []string
+
+			handler := launchHandler(t, &hints, launchingTestLaunch)
+
+			req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/lti/authorize?"+query, strings.NewReader(createTestAuthenticationForm().Encode()))
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+			w := httptest.NewRecorder()
+			handler.ServeHTTP(w, req)
+
+			require.Equal(t, http.StatusOK, w.Code, query+": "+w.Body.String())
+			_, fields := postedFields(t, w)
+			assert.NotEmpty(t, fields["id_token"], query)
+		}
+	})
+
 	t.Run("a request without a message hint gets an error page and never reaches Launch", func(t *testing.T) {
 		t.Parallel()
 
