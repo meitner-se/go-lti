@@ -352,6 +352,73 @@ func TestRegression_ReviewCountsPersonalDataInCustomParameters(t *testing.T) {
 	assert.Equal(t, []lti.Variable{lti.VariablePersonNameFull, lti.VariablePersonEmailPrimary, lti.VariableUserUsername}, review.PersonalDataVariables)
 }
 
+func TestPlatform_ReviewRegistration_MessageTargets(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name           string
+		messages       []any
+		types          []lti.MessageType
+		targetLinkURI  string
+		deepLinkingURL string
+	}{
+		{
+			name:          "no messages launch at the tool's target",
+			messages:      nil,
+			types:         nil,
+			targetLinkURI: "https://client.example.org/lti",
+		},
+		{
+			name: "a message's target overrides the tool's, and only the first of a type counts",
+			messages: []any{
+				map[string]any{"type": "LtiResourceLinkRequest", "target_link_uri": "https://client.example.org/launch"},
+				map[string]any{"type": "LtiDeepLinkingRequest", "target_link_uri": "https://client.example.org/pick"},
+				map[string]any{"type": "LtiResourceLinkRequest", "target_link_uri": "https://client.example.org/ignored"},
+				map[string]any{"type": "LtiDeepLinkingRequest", "target_link_uri": "https://client.example.org/ignored"},
+			},
+			types:          []lti.MessageType{"LtiResourceLinkRequest", "LtiDeepLinkingRequest"},
+			targetLinkURI:  "https://client.example.org/launch",
+			deepLinkingURL: "https://client.example.org/pick",
+		},
+		{
+			name:           "a message without a target uses the tool's",
+			messages:       []any{map[string]any{"type": "LtiResourceLinkRequest"}, map[string]any{"type": "LtiDeepLinkingRequest"}},
+			types:          []lti.MessageType{"LtiResourceLinkRequest", "LtiDeepLinkingRequest"},
+			targetLinkURI:  "https://client.example.org/lti",
+			deepLinkingURL: "https://client.example.org/lti",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			body := createTestRegistrationJSON()
+			toolConfiguration(body)["messages"] = tt.messages
+
+			reg, err := ParseRegistration(encodeRegistration(t, body))
+			require.NoError(t, err)
+
+			review := reg.Review(createTestConfig())
+			assert.Equal(t, tt.types, review.MessageTypes)
+			assert.Equal(t, tt.targetLinkURI, review.TargetLinkURI)
+			assert.Equal(t, tt.deepLinkingURL, review.DeepLinkingURL)
+		})
+	}
+}
+
+func TestWithoutPersonalClaims(t *testing.T) {
+	t.Parallel()
+
+	assert.Equal(t, []string{"name", "given_name", "family_name", "middle_name", "nickname", "preferred_username", "email"}, PersonalClaims())
+	assert.Equal(t, []string{"iss", "sub", "aud", "nonce"}, WithoutPersonalClaims([]string{"iss", "sub", "name", "aud", "email", "given_name", "nonce"}))
+	assert.Empty(t, WithoutPersonalClaims(nil))
+
+	claims := []string{"iss", "email"}
+	WithoutPersonalClaims(claims)
+	assert.Equal(t, []string{"iss", "email"}, claims, "the argument is left as it is")
+}
+
 func TestRegression_ResponseWithoutLocalizedNamesHasNone(t *testing.T) {
 	t.Parallel()
 
@@ -456,6 +523,9 @@ func TestPlatform_ReviewRegistration(t *testing.T) {
 			{Type: "LtiDeepLinkingRequest", Label: "Add a virtual garden", TargetLinkURI: "https://client.example.org/lti/dl", Supported: true},
 			{Type: "LtiSubmissionReviewRequest", Supported: false},
 		},
+		MessageTypes:      []lti.MessageType{"LtiDeepLinkingRequest", "LtiSubmissionReviewRequest"},
+		TargetLinkURI:     "https://client.example.org/lti",
+		DeepLinkingURL:    "https://client.example.org/lti/dl",
 		RequestedClaims:   []string{"iss", "sub", "name", "given_name", "family_name", "email"},
 		RequestsName:      true,
 		RequestsEmail:     true,

@@ -73,7 +73,7 @@ func NewLauncher(cfg Config, keys lti.Keys, opts ...Option) (*Launcher, error) {
 	return &Launcher{config: cfg, keys: keys, now: newOptions(opts).now}, nil
 }
 
-// JWKS returns the document to serve at Endpoints.JWKS.
+// JWKS returns the document to serve at Endpoints().JWKS.
 func (l *Launcher) JWKS(ctx context.Context) (jwks.Set, error) {
 	keys, err := l.keys.PublicKeys(ctx)
 	if err != nil {
@@ -148,7 +148,7 @@ func (l *Launcher) idTokenClaims(tool Tool, nonce string, msg lti.Message, now t
 			return nil, errors.New("lti: launch needs a message")
 		}
 
-		settings, err := deepLinkingSettingsClaim(m.Settings, l.config.Endpoints.DeepLinkReturn)
+		settings, err := deepLinkingSettingsClaim(m.Settings, l.config.Endpoints().DeepLinkReturn)
 		if err != nil {
 			return nil, err
 		}

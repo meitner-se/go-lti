@@ -30,14 +30,9 @@ Describe your platform once:
 
 ```go
 cfg := platform.Config{
-	Issuer: "https://lms.example.com/lti",
-	Endpoints: platform.Endpoints{
-		Authorization:  "https://lms.example.com/lti/authorize",
-		JWKS:           "https://lms.example.com/lti/jwks",
-		Registration:   "https://lms.example.com/lti/register",
-		Token:          "https://lms.example.com/oauth/token",
-		DeepLinkReturn: "https://lms.example.com/lti/deep-link-return",
-	},
+	Issuer:        "https://lms.example.com/lti",
+	Paths:         platform.Paths{Authorization: "/authorize", JWKS: "/jwks", Registration: "/register", DeepLinkReturn: "/deep-link-return"},
+	TokenEndpoint: "https://lms.example.com/oauth/token",
 	Product: platform.Product{GUID: "lms-1", Name: "Example LMS", FamilyCode: "example-lms", Version: "1.0.0"},
 }
 ```
@@ -52,7 +47,7 @@ launcher, err := platform.NewLauncher(cfg, keys)
 initiation := platform.LoginInitiation{DeploymentID: deploymentID, LoginHint: userHint, MessageHint: launchHint}
 loginURL, err := cfg.LoginInitiationURL(tool, initiation)
 
-// 2. At Endpoints.Authorization: the tool's authentication request, from the query for a GET or
+// 2. At cfg.Endpoints().Authorization: the tool's authentication request, from the query for a GET or
 // from r.PostForm (after r.ParseForm) for a POST. r.Form merges both, which counts as repeating
 // any parameter that appears in each.
 req, err := platform.ParseAuthenticationRequest(r.URL.Query())
@@ -83,7 +78,7 @@ if err != nil {
 }
 form.ServeHTTP(w, r) // auto-submits id_token and state to the tool, with a strict CSP
 
-// Serve launcher.JWKS(ctx) at Endpoints.JWKS.
+// Serve launcher.JWKS(ctx) at cfg.Endpoints().JWKS.
 ```
 
 Fill custom parameters with `lti.Substitute(custom, values, sharing)`: variables about the user are only filled in when the tool's sharing allows.
@@ -115,16 +110,19 @@ Handle a Dynamic Registration:
 
 ```go
 // Send the admin's browser to the tool's registration URL.
-startURL, err := cfg.RegistrationInitiationURL(toolRegistrationURL, openIDConfigurationURL, registrationToken)
+startURL, err := cfg.RegistrationInitiationURL(toolRegistrationURL, cfg.Endpoints().OpenIDConfiguration, registrationToken)
 
-// At Endpoints.Registration, the tool posts its registration.
-reg, err := platform.ParseRegistration(body)
-review := reg.Review(cfg) // show this to an admin before activating the tool
+// Serve the OpenID configuration and the registration endpoint. Your Register checks the token,
+// saves the tool and returns what it granted; the handler answers the tool per the spec.
+handler, err := platform.NewHandler(cfg, platform.Handlers{Register: register})
+http.Handle("/lti/", handler) // everything under the issuer's path, with the path unchanged
+
+// In Register, before activating the tool:
+review := reg.Review(cfg) // show this to an admin
 tool := reg.Tool(clientID)
-response := reg.Response(platform.RegistrationGrant{ClientID: clientID, DeploymentID: deploymentID})
 ```
 
-Serve `cfg.OpenIDConfiguration()` at the URL you hand tools for Dynamic Registration. The package examples on [pkg.go.dev](https://pkg.go.dev/github.com/meitner-se/go-lti) run as tests.
+The platform's endpoints are the issuer plus `cfg.Paths`, listed by `cfg.Endpoints()`. Only the OpenID configuration's path is set by a spec (`platform.PathOpenIDConfiguration`); you choose the others, and tools learn them from the OpenID configuration, the registration response or a launch. Once a tool has registered it keeps the URLs it was given, so don't change a path after that. The package examples on [pkg.go.dev](https://pkg.go.dev/github.com/meitner-se/go-lti) run as tests.
 
 ## Errors
 

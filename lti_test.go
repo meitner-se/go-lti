@@ -39,6 +39,7 @@ func TestError(t *testing.T) {
 
 	assert.Equal(t, http.StatusUnauthorized, lti.NewError(lti.ErrorInvalidClient, "unknown client", nil).StatusCode())
 	assert.Equal(t, http.StatusUnauthorized, lti.NewError(lti.ErrorInvalidToken, "expired", nil).StatusCode())
+	assert.Equal(t, http.StatusInternalServerError, lti.NewError(lti.ErrorServerError, "try again", nil).StatusCode())
 
 	_, ok = lti.AsError(errors.New("ours"))
 	assert.False(t, ok)

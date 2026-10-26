@@ -42,21 +42,23 @@ type SupportedMessage struct {
 }
 
 // OpenIDConfiguration returns the platform's OpenID configuration document. It fails when the
-// config is invalid, or lacks what Dynamic Registration requires: registration and token
-// endpoints, and the product's family code and version.
+// config is invalid, or lacks what Dynamic Registration requires: a token endpoint, and the
+// product's family code and version.
 func (c Config) OpenIDConfiguration() (OpenIDConfiguration, error) {
 	if err := c.Validate(); err != nil {
 		return OpenIDConfiguration{}, err
 	}
 
-	if c.Endpoints.Registration == "" || c.Endpoints.Token == "" {
-		return OpenIDConfiguration{}, errors.New("lti: the openid configuration needs registration and token endpoints")
+	if c.TokenEndpoint == "" {
+		return OpenIDConfiguration{}, errors.New("lti: the openid configuration needs a token endpoint")
 	}
 
 	// Dynamic Registration §2.1.2 requires both in the platform configuration.
 	if c.Product.FamilyCode == "" || c.Product.Version == "" {
 		return OpenIDConfiguration{}, errors.New("lti: the openid configuration needs the product's family code and version")
 	}
+
+	endpoints := c.Endpoints()
 
 	scopes := []string{"openid"}
 	for _, scope := range c.Scopes {
@@ -65,10 +67,10 @@ func (c Config) OpenIDConfiguration() (OpenIDConfiguration, error) {
 
 	return OpenIDConfiguration{
 		Issuer:                            c.Issuer,
-		AuthorizationEndpoint:             c.Endpoints.Authorization,
-		RegistrationEndpoint:              c.Endpoints.Registration,
-		JWKSURI:                           c.Endpoints.JWKS,
-		TokenEndpoint:                     c.Endpoints.Token,
+		AuthorizationEndpoint:             endpoints.Authorization,
+		RegistrationEndpoint:              endpoints.Registration,
+		JWKSURI:                           endpoints.JWKS,
+		TokenEndpoint:                     endpoints.Token,
 		TokenEndpointAuthMethodsSupported: []string{"private_key_jwt"},
 		TokenEndpointAuthSigningAlgValuesSupported: []string{"RS256"},
 		ScopesSupported:                  scopes,

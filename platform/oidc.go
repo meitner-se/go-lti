@@ -72,7 +72,7 @@ func (c Config) LoginInitiationURL(tool Tool, li LoginInitiation) (string, error
 	return u.String(), nil
 }
 
-// AuthenticationRequest is the tool's OIDC authentication request to Endpoints.Authorization:
+// AuthenticationRequest is the tool's OIDC authentication request to Endpoints().Authorization:
 // step 2 of the launch (1EdTech Security Framework §5.1.1.2). Get one from
 // ParseAuthenticationRequest: Launcher.Respond refuses a request built any other way, since only
 // the parser checks its response_type, response_mode, prompt and scope.

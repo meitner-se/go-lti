@@ -139,7 +139,7 @@ type Sharing struct {
 // DeepLinkingSettings is what the platform asks the tool for (LTI Deep Linking 2.0 §4.4.1).
 // The same value checks the tool's response.
 type DeepLinkingSettings struct {
-	// ReturnURL is where the tool posts its response. It defaults to Endpoints.DeepLinkReturn.
+	// ReturnURL is where the tool posts its response. It defaults to the platform's Endpoints().DeepLinkReturn.
 	ReturnURL string
 	// AcceptTypes are the content item types the platform can place.
 	AcceptTypes []ContentItemType
