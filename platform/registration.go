@@ -444,6 +444,28 @@ func (r *Registration) Response(grant RegistrationGrant) RegistrationResponse {
 	return RegistrationResponse{ClientID: grant.ClientID, Registration: registered}
 }
 
+// MarshalJSON encodes the response with the tool's localized names as client_name#<language tag>
+// members (RFC 7591 §2.2), since the response returns all registered metadata (§3.2.1).
+func (r RegistrationResponse) MarshalJSON() ([]byte, error) {
+	type plain RegistrationResponse
+
+	encoded, err := json.Marshal(plain(r)) //nolint:errchkjson // errcheck requires the check outside _test.go files
+	if err != nil || len(r.ClientNames) == 0 {
+		return encoded, err
+	}
+
+	var members map[string]any
+	if err := json.Unmarshal(encoded, &members); err != nil {
+		return nil, err
+	}
+
+	for tag, name := range r.ClientNames {
+		members["client_name#"+tag] = name
+	}
+
+	return json.Marshal(members)
+}
+
 // personalDataVariables returns the $Person.* and $User.username variables in the tool's and its
 // messages' custom parameters, in order and without repeats (LTI 1.3 §5.4.6).
 func (r *Registration) personalDataVariables() []lti.Variable {
@@ -455,14 +477,19 @@ func (r *Registration) personalDataVariables() []lti.Variable {
 	}
 
 	var variables []lti.Variable
+
+	seen := map[lti.Variable]bool{}
 	for _, custom := range params {
 		for _, key := range slices.Sorted(maps.Keys(custom)) {
-			variable, ok := strings.CutPrefix(custom[key], "$")
-			if !ok || !isPersonalDataVariable(lti.Variable(variable)) || slices.Contains(variables, lti.Variable(variable)) {
+			name, ok := strings.CutPrefix(custom[key], "$")
+			variable := lti.Variable(name)
+
+			if !ok || !isPersonalDataVariable(variable) || seen[variable] {
 				continue
 			}
 
-			variables = append(variables, lti.Variable(variable))
+			seen[variable] = true
+			variables = append(variables, variable)
 		}
 	}
 
@@ -489,9 +516,15 @@ func (r *Registration) offDomainURIs() []string {
 		}
 	}
 
+	// Every list here comes from the tool, so neither the domains nor the URIs are compared pairwise.
+	domains := urlcheck.NewDomainSet(r.Domains())
+
 	var off []string
+
+	seen := map[string]bool{}
 	for _, uri := range uris {
-		if !urlcheck.OnDomains(uri, r.Domains()) && !slices.Contains(off, uri) {
+		if !domains.Contains(uri) && !seen[uri] {
+			seen[uri] = true
 			off = append(off, uri)
 		}
 	}

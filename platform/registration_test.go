@@ -2,8 +2,10 @@ package platform
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -350,6 +352,55 @@ func TestRegression_ReviewCountsPersonalDataInCustomParameters(t *testing.T) {
 	assert.Equal(t, []lti.Variable{lti.VariablePersonNameFull, lti.VariablePersonEmailPrimary, lti.VariableUserUsername}, review.PersonalDataVariables)
 }
 
+func TestRegression_ResponseWithoutLocalizedNamesHasNone(t *testing.T) {
+	t.Parallel()
+
+	body := createTestRegistrationJSON()
+	delete(body, "client_name#sv")
+	delete(body, "client_name#de-DE")
+
+	reg, err := ParseRegistration(encodeRegistration(t, body))
+	require.NoError(t, err)
+
+	encoded, err := json.Marshal(reg.Response(RegistrationGrant{ClientID: "client-1", DeploymentID: "", Scopes: nil, Claims: nil}))
+	require.NoError(t, err)
+	assert.NotContains(t, string(encoded), "client_name#")
+	assert.Contains(t, string(encoded), `"client_id":"client-1"`)
+}
+
+// A tool controls every list Review reads, and a platform reviews before it has decided anything
+// about the tool, so Review must not compare those lists pairwise.
+func TestRegression_ReviewOfALargeRegistrationIsFast(t *testing.T) {
+	t.Parallel()
+
+	const n = 8000
+
+	redirectURIs := make([]string, 0, n)
+	secondaryDomains := make([]string, 0, n)
+	custom := make(map[string]any, n)
+
+	for i := range n {
+		redirectURIs = append(redirectURIs, fmt.Sprintf("https://off%d.vendor.example/callback", i))
+		secondaryDomains = append(secondaryDomains, fmt.Sprintf("cdn%d.example.net", i))
+		custom[fmt.Sprintf("p%d", i)] = fmt.Sprintf("$Person.custom%d", i)
+	}
+
+	body := createTestRegistrationJSON()
+	body["redirect_uris"] = redirectURIs
+	toolConfiguration(body)["secondary_domains"] = secondaryDomains
+	toolConfiguration(body)["custom_parameters"] = custom
+
+	reg, err := ParseRegistration(encodeRegistration(t, body))
+	require.NoError(t, err)
+
+	start := time.Now()
+	review := reg.Review(createTestConfig())
+
+	assert.Len(t, review.OffDomainURIs, n)
+	assert.Len(t, review.PersonalDataVariables, n)
+	assert.Less(t, time.Since(start), 5*time.Second, "comparing the lists pairwise takes far longer")
+}
+
 func TestRegression_UnusableMessageIconIsDropped(t *testing.T) {
 	t.Parallel()
 
@@ -445,13 +496,16 @@ func TestPlatform_RegistrationResponse(t *testing.T) {
 		Claims:       []string{"iss", "sub", "aud"},
 	})
 
-	body, _ := json.Marshal(response)
+	body, err := json.Marshal(response)
+	require.NoError(t, err)
 
 	var got map[string]any
 	require.NoError(t, json.Unmarshal(body, &got))
 
 	assert.Equal(t, "client-1", got["client_id"])
 	assert.Equal(t, "Virtual Garden", got["client_name"])
+	assert.Equal(t, "Virtuell trädgård", got["client_name#sv"], "the localized names are registered metadata too")
+	assert.Equal(t, "Virtueller Garten", got["client_name#de-DE"])
 	assert.Equal(t, "https://purl.imsglobal.org/spec/lti-ags/scope/score", got["scope"], "only granted scopes the tool asked for")
 
 	config, ok := got["https://purl.imsglobal.org/spec/lti-tool-configuration"].(map[string]any)
@@ -469,7 +523,8 @@ func TestPlatform_RegistrationResponse_GrantsNothingByDefault(t *testing.T) {
 
 	response := parseTestRegistration(t).Response(RegistrationGrant{ClientID: "client-1", DeploymentID: "deployment-1"})
 
-	body, _ := json.Marshal(response)
+	body, err := json.Marshal(response)
+	require.NoError(t, err)
 
 	assert.NotContains(t, string(body), `"scope"`)
 	assert.NotContains(t, string(body), `"claims"`)

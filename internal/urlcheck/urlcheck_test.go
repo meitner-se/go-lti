@@ -99,6 +99,8 @@ func TestOnDomains(t *testing.T) {
 	tests := map[string]bool{
 		"https://tool.example.com/a":          true,
 		"https://sub.tool.example.com/a":      true,
+		"https://a.b.tool.example.com/a":      true,
+		"https://example.com/a":               false,
 		"https://TOOL.example.com./a":         true,
 		"https://tool.example.com:8443/a":     true,
 		"https://cdn.example.net/a.png":       true,
