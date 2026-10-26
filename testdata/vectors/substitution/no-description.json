@@ -1,0 +1,14 @@
+{
+  "description": "A resource link without a description resolves $ResourceLink.description to an empty string.",
+  "message_type": "LtiResourceLinkRequest",
+  "sub": "3f2a8c1e-7d4b-4e8f-9a6c-1b2d3e4f5a6b",
+  "resource_link": {"id": "link-1", "title": "Cell quiz"},
+  "custom": {
+    "link_title": "$ResourceLink.title",
+    "link_description": "$ResourceLink.description"
+  },
+  "expect_custom": {
+    "link_title": "Cell quiz",
+    "link_description": ""
+  }
+}

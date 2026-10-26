@@ -234,8 +234,8 @@ func (l *Launcher) idTokenClaims(tool Tool, nonce string, msg lti.Message, now t
 	return claims, nil
 }
 
-// LaunchVariables returns the substitution variables a launch takes from its message, for
-// Config.Variables.
+// LaunchVariables returns the substitution variables a launch supports, for Config.Variables. Each
+// takes the message's value, else the one in Common.Variables, else "" (LTI 1.3 Appendix B).
 func LaunchVariables() []lti.Variable {
 	return []lti.Variable{
 		lti.VariableUserID,
@@ -246,15 +246,18 @@ func LaunchVariables() []lti.Variable {
 	}
 }
 
-// substitutionValues returns the variable values for common's custom parameters: common.Variables,
-// overridden by the values the message carries. link is the resource link, if the message has one.
+// substitutionValues returns the variable values for common's custom parameters: "" for each of
+// LaunchVariables, overridden by common.Variables, overridden by the values the message carries.
+// link is the resource link, if the message has one.
 func substitutionValues(common lti.Common, link *lti.ResourceLink) map[lti.Variable]string {
-	values := maps.Clone(common.Variables)
-	if values == nil {
-		values = map[lti.Variable]string{}
+	values := map[lti.Variable]string{}
+	for _, variable := range LaunchVariables() {
+		values[variable] = ""
 	}
 
-	// An empty value is one the message doesn't carry, so the variable is left to Variables.
+	maps.Copy(values, common.Variables)
+
+	// An empty value is one the message doesn't carry, so it doesn't override Variables.
 	set := func(variable lti.Variable, value string) {
 		if value != "" {
 			values[variable] = value

@@ -1,5 +1,5 @@
 {
-  "description": "A Deep Linking request without a context or locale has no Context.*, ResourceLink.* or Message.locale values, so those variables stay as they are.",
+  "description": "A Deep Linking request without a context or locale has no Context.*, ResourceLink.* or Message.locale values. The platform supports those variables, so they resolve to an empty string (LTI 1.3 Appendix B).",
   "message_type": "LtiDeepLinkingRequest",
   "sub": "3f2a8c1e-7d4b-4e8f-9a6c-1b2d3e4f5a6b",
   "custom": {
@@ -9,9 +9,9 @@
     "user": "$User.id"
   },
   "expect_custom": {
-    "context": "$Context.id",
-    "link": "$ResourceLink.id",
-    "locale": "$Message.locale",
+    "context": "",
+    "link": "",
+    "locale": "",
     "user": "3f2a8c1e-7d4b-4e8f-9a6c-1b2d3e4f5a6b"
   }
 }

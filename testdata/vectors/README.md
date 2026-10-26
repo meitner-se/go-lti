@@ -56,6 +56,11 @@ A launch message and the `custom` parameters it is sent with, as configured. `me
 `LtiResourceLinkRequest` or `LtiDeepLinkingRequest`; `sub`, `context`, `resource_link`, `locale`
 (the launch presentation's) and `user` are what the message carries, `sharing` says whether the
 user's `name` and `email` may be shared, and `variables` are the values the caller supplies for
-variables the message doesn't carry. `expect_custom` is the custom claim the launch sends: each
-value that is exactly `$` and a variable from LTI 1.3 Appendix B takes the message's value, else
-the supplied one, else stays as it is. Every case is valid.
+variables the message doesn't carry. `expect_custom` is the custom claim the launch sends. Only a
+value that is exactly `$` and a variable name is substituted. A variable the platform supports
+(`User.id`, `Person.name.full`, `Person.name.given`, `Person.name.family`, `Person.email.primary`,
+`Context.id`, `Context.title`, `Context.label`, `ResourceLink.id`, `ResourceLink.title`,
+`ResourceLink.description` and `Message.locale`) takes the message's value, else the supplied
+one, else an empty string (LTI 1.3 Appendix B). Any other variable takes the supplied value or
+stays as it is. `Person.*` and `User.username` are only substituted when `sharing` allows the
+user's name or email, and the other `Person.*` variables never are. Every case is valid.

@@ -400,7 +400,7 @@ func TestRegression_LaunchKeepsPersonalVariablesUnlessShared(t *testing.T) {
 	}, claims[lti.ClaimCustom])
 }
 
-func TestLauncher_IDTokenClaims_KeepsVariablesTheMessageDoesntCarry(t *testing.T) {
+func TestRegression_LaunchResolvesSupportedVariablesWithoutAValueToEmpty(t *testing.T) {
 	t.Parallel()
 
 	launcher := createTestLauncher(t, ltitest.NewSigningKey(t))
@@ -413,17 +413,21 @@ func TestLauncher_IDTokenClaims_KeepsVariablesTheMessageDoesntCarry(t *testing.T
 		"link":    "$ResourceLink.id",
 		"locale":  "$Message.locale",
 		"user":    "$User.id",
+		"history": "$Context.id.history",
+		"term":    "$CourseSection.timeFrame.begin",
 	}
 
 	claims, err := launcher.idTokenClaims(createTestTool(), "nonce-1", msg, testNow)
 	require.NoError(t, err)
 
 	assert.Equal(t, map[string]string{
-		"context": "$Context.id",
-		"link":    "$ResourceLink.id",
-		"locale":  "$Message.locale",
+		"context": "",
+		"link":    "",
+		"locale":  "",
 		"user":    "3f2a8c1e-7d4b-4e8f-9a6c-1b2d3e4f5a6b",
-	}, claims[lti.ClaimCustom])
+		"history": "$Context.id.history",
+		"term":    "$CourseSection.timeFrame.begin",
+	}, claims[lti.ClaimCustom], "a supported variable without a value is empty; only an unsupported one stays as it is")
 }
 
 func TestLaunchVariables_AreTheOnesALaunchFills(t *testing.T) {
