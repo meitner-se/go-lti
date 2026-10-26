@@ -1,9 +1,11 @@
 package platform
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -252,6 +254,61 @@ func TestNewHandler_Registration(t *testing.T) {
 
 		requireRegistrationErrorResponse(t, w, http.StatusBadRequest, lti.ErrorInvalidClientMetadata, "registration request is larger than 1 MiB")
 		assert.Empty(t, tokens)
+	})
+
+	t.Run("RequireToken refuses a registration without a token before Register", func(t *testing.T) {
+		t.Parallel()
+
+		var tokens []string
+
+		handler := newTestHandler(t, Handlers{Register: granting(&tokens), RequireToken: true})
+		body := string(encodeRegistration(t, createTestRegistrationJSON()))
+
+		w := postRegistration(t, handler, "", body)
+
+		requireRegistrationErrorResponse(t, w, http.StatusUnauthorized, lti.ErrorInvalidToken, "the registration token is missing")
+		assert.Equal(t, `Bearer error="invalid_token"`, w.Header().Get("WWW-Authenticate"))
+		assert.Empty(t, tokens)
+
+		assert.Equal(t, http.StatusCreated, postRegistration(t, handler, "Bearer token-1", body).Code)
+		assert.Equal(t, []string{"token-1"}, tokens)
+	})
+
+	t.Run("Logger logs rejections at warn and failures at error", func(t *testing.T) {
+		t.Parallel()
+
+		var logs bytes.Buffer
+
+		handler := newTestHandler(t, Handlers{
+			Register: func(_ context.Context, token string, _ *Registration) (RegistrationGrant, error) {
+				if token == "broken" {
+					return RegistrationGrant{}, errors.New("database down")
+				}
+
+				return RegistrationGrant{}, lti.NewError(lti.ErrorInvalidToken, "unknown token", nil)
+			},
+			Logger: slog.New(slog.NewJSONHandler(&logs, nil)),
+		})
+		body := string(encodeRegistration(t, createTestRegistrationJSON()))
+
+		postRegistration(t, handler, "Bearer unknown", body)
+		postRegistration(t, handler, "Bearer broken", body)
+
+		lines := strings.Split(strings.TrimSpace(logs.String()), "\n")
+		require.Len(t, lines, 2)
+
+		var rejected, failed map[string]any
+		require.NoError(t, json.Unmarshal([]byte(lines[0]), &rejected))
+		require.NoError(t, json.Unmarshal([]byte(lines[1]), &failed))
+
+		assert.Equal(t, "WARN", rejected["level"])
+		assert.Equal(t, "lti request rejected", rejected["msg"])
+		assert.Equal(t, "invalid_token", rejected["code"])
+		assert.Equal(t, "/lti/register", rejected["path"])
+
+		assert.Equal(t, "ERROR", failed["level"])
+		assert.Equal(t, "lti request failed", failed["msg"])
+		assert.Equal(t, "database down", failed["error"])
 	})
 
 	t.Run("a Register failure is a server_error that says nothing more", func(t *testing.T) {

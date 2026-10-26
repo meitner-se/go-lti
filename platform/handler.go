@@ -5,12 +5,17 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
 
 	"github.com/meitner-se/go-lti"
 )
+
+// errRegistrationTokenMissing answers a registration without a Bearer token when the platform
+// requires one.
+var errRegistrationTokenMissing = lti.NewError(lti.ErrorInvalidToken, "the registration token is missing", nil)
 
 // errRegistrationNotSaved answers a registration Register failed to save for a reason of its own.
 var errRegistrationNotSaved = lti.NewError(lti.ErrorServerError, "the registration could not be saved; try again", nil)
@@ -22,7 +27,13 @@ type Handlers struct {
 	// sent none. An *lti.Error, such as lti.ErrorInvalidToken for a refused token, is sent to the
 	// tool as it is; any other error is answered as a server_error that says nothing more. Required.
 	Register func(ctx context.Context, token string, reg *Registration) (RegistrationGrant, error)
-	// OnError, when set, is called with every error a tool is answered with, for logging.
+	// RequireToken refuses a registration without a Bearer token as invalid_token, before Register
+	// is called. The spec leaves the token to the platform, so it is off by default.
+	RequireToken bool
+	// Logger, when set, logs every error a tool is answered with: a rejection at Warn with its
+	// code, any other error at Error.
+	Logger *slog.Logger
+	// OnError, when set, is called with every error a tool is answered with.
 	OnError func(r *http.Request, err error)
 }
 
@@ -63,7 +74,7 @@ func NewHandler(cfg Config, h Handlers) (http.Handler, error) {
 
 	mux := http.NewServeMux()
 	mux.Handle("GET "+issuer.Path+PathOpenIDConfiguration, openIDConfigurationHandler(discovery))
-	mux.Handle("POST "+issuer.Path+cfg.Paths.Registration, &registrationEndpoint{register: h.Register, onError: h.OnError})
+	mux.Handle("POST "+issuer.Path+cfg.Paths.Registration, &registrationEndpoint{handlers: h})
 
 	return mux, nil
 }
@@ -84,8 +95,7 @@ func openIDConfigurationHandler(body []byte) http.Handler {
 // §3.2.2's error response, plus a Bearer challenge for invalid_token (RFC 6750 §3). Every answer
 // has Cache-Control: no-store.
 type registrationEndpoint struct {
-	register func(ctx context.Context, token string, reg *Registration) (RegistrationGrant, error)
-	onError  func(r *http.Request, err error)
+	handlers Handlers
 }
 
 func (e *registrationEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -106,7 +116,14 @@ func (e *registrationEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	grant, err := e.register(r.Context(), bearerToken(r.Header.Get("Authorization")), reg)
+	token := bearerToken(r.Header.Get("Authorization"))
+	if token == "" && e.handlers.RequireToken {
+		e.fail(w, r, errRegistrationTokenMissing)
+
+		return
+	}
+
+	grant, err := e.handlers.Register(r.Context(), token, reg)
 	if err != nil {
 		e.fail(w, r, err)
 
@@ -132,13 +149,30 @@ type registrationError struct {
 }
 
 func (e *registrationEndpoint) fail(w http.ResponseWriter, r *http.Request, err error) {
-	if e.onError != nil {
-		e.onError(r, err)
-	}
-
 	rejection, ok := lti.AsError(err)
 	if !ok {
 		rejection = errRegistrationNotSaved
+	}
+
+	if logger := e.handlers.Logger; logger != nil {
+		if ok && rejection.Code != lti.ErrorServerError {
+			logger.WarnContext(
+				r.Context(), "lti request rejected",
+				slog.String("path", r.URL.Path),
+				slog.String("code", string(rejection.Code)),
+				slog.Any("error", err),
+			)
+		} else {
+			logger.ErrorContext(
+				r.Context(), "lti request failed",
+				slog.String("path", r.URL.Path),
+				slog.Any("error", err),
+			)
+		}
+	}
+
+	if e.handlers.OnError != nil {
+		e.handlers.OnError(r, err)
 	}
 
 	if rejection.Code == lti.ErrorInvalidToken {

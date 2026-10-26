@@ -1,6 +1,7 @@
 package platform
 
 import (
+	"cmp"
 	"encoding/json"
 	"errors"
 	"maps"
@@ -326,6 +327,16 @@ type RegistrationReview struct {
 	TOSURI    string
 	PolicyURI string
 	Messages  []ReviewMessage
+	// MessageTypes are the types the tool's messages name, each once, in order.
+	MessageTypes []lti.MessageType
+	// TargetLinkURI is where a resource link launch goes: the first LtiResourceLinkRequest
+	// message's target_link_uri, or the tool's when that message has none or there is none
+	// (Dynamic Registration §2.4).
+	TargetLinkURI string
+	// DeepLinkingURL is where a Deep Linking request goes: the first LtiDeepLinkingRequest
+	// message's target_link_uri, or the tool's when that message has none. Empty when the tool has
+	// no Deep Linking message.
+	DeepLinkingURL string
 	// RequestedClaims are the claims the tool asks to receive.
 	RequestedClaims []string
 	// RequestsName and RequestsEmail say whether the tool asks for the user's name or email address,
@@ -376,6 +387,7 @@ func (r *Registration) Review(cfg Config) RegistrationReview {
 
 	variables := r.personalDataVariables()
 	scopes := r.Scopes()
+	messageTypes, targetLinkURI, deepLinkingURL := r.messageTargets()
 
 	var unsupported []lti.Scope
 	for _, scope := range scopes {
@@ -395,6 +407,9 @@ func (r *Registration) Review(cfg Config) RegistrationReview {
 		TOSURI:                r.TOSURI,
 		PolicyURI:             r.PolicyURI,
 		Messages:              messages,
+		MessageTypes:          messageTypes,
+		TargetLinkURI:         targetLinkURI,
+		DeepLinkingURL:        deepLinkingURL,
 		RequestedClaims:       r.ToolConfiguration.Claims,
 		RequestsName:          containsAny(r.ToolConfiguration.Claims, nameClaims) || slices.ContainsFunc(variables, isNameVariable),
 		RequestsEmail:         containsAny(r.ToolConfiguration.Claims, emailClaims) || slices.ContainsFunc(variables, isEmailVariable),
@@ -404,6 +419,48 @@ func (r *Registration) Review(cfg Config) RegistrationReview {
 		OffDomainURIs:         r.offDomainURIs(),
 		PublicSuffixDomains:   r.publicSuffixDomains(),
 	}
+}
+
+// messageTargets returns the message types, each once in order, and where a resource link launch
+// and a Deep Linking request go. Only the first message of a type counts, and a message without a
+// target_link_uri uses the tool's (Dynamic Registration §2.4).
+func (r *Registration) messageTargets() (types []lti.MessageType, resourceLink, deepLinking string) {
+	tool := r.ToolConfiguration
+	resourceLink = tool.TargetLinkURI
+
+	seen := map[lti.MessageType]bool{}
+	for _, message := range tool.Messages {
+		if seen[message.Type] {
+			continue
+		}
+
+		seen[message.Type] = true
+		types = append(types, message.Type)
+
+		target := cmp.Or(message.TargetLinkURI, tool.TargetLinkURI)
+
+		switch message.Type {
+		case lti.MessageTypeResourceLinkRequest:
+			resourceLink = target
+		case lti.MessageTypeDeepLinkingRequest:
+			deepLinking = target
+		}
+	}
+
+	return types, resourceLink, deepLinking
+}
+
+// PersonalClaims returns the OpenID Connect claims that identify the user by name or email
+// address. A platform that shares neither with a tool leaves them out of its RegistrationGrant.
+func PersonalClaims() []string {
+	return slices.Concat(nameClaims, emailClaims)
+}
+
+// WithoutPersonalClaims returns claims without the PersonalClaims, in order.
+func WithoutPersonalClaims(claims []string) []string {
+	return slices.DeleteFunc(slices.Clone(claims), func(claim string) bool {
+		return slices.Contains(nameClaims, claim) || slices.Contains(emailClaims, claim)
+	})
 }
 
 // RegistrationGrant is what the platform registered for a tool.
