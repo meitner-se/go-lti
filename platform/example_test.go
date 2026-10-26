@@ -80,6 +80,9 @@ func Example_launch() {
 				DeploymentID: "deployment-1",
 				Subject:      "a6d5c443-1f51-4783-ba1a-7686ffe3b54a",
 				Roles:        []lti.Role{lti.RoleLearner},
+				Context:      &lti.LaunchContext{ID: "course-1", Title: "Biology 1"},
+				// As configured on the link: the launch sends "course-1" for "$Context.id".
+				Custom: map[string]string{"course": "$Context.id"},
 			},
 			ResourceLink: lti.ResourceLink{ID: "link-1", Title: "Quiz"},
 		},

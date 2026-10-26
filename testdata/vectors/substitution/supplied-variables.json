@@ -1,0 +1,26 @@
+{
+  "description": "The caller supplies variables the message doesn't carry. Where the message carries a value, its own wins.",
+  "message_type": "LtiResourceLinkRequest",
+  "sub": "3f2a8c1e-7d4b-4e8f-9a6c-1b2d3e4f5a6b",
+  "context": {"id": "course-1", "title": "Biology 1"},
+  "resource_link": {"id": "link-1"},
+  "sharing": {"name": true, "email": false},
+  "variables": {
+    "User.username": "ada",
+    "CourseSection.timeFrame.begin": "2026-08-17",
+    "Context.id": "another-course",
+    "Context.label": "BIO"
+  },
+  "custom": {
+    "username": "$User.username",
+    "term": "$CourseSection.timeFrame.begin",
+    "context": "$Context.id",
+    "label": "$Context.label"
+  },
+  "expect_custom": {
+    "username": "ada",
+    "term": "2026-08-17",
+    "context": "course-1",
+    "label": "BIO"
+  }
+}

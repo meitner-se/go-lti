@@ -1,0 +1,38 @@
+{
+  "description": "Every variable the message carries is filled in from it when sharing allows names and email.",
+  "message_type": "LtiResourceLinkRequest",
+  "sub": "3f2a8c1e-7d4b-4e8f-9a6c-1b2d3e4f5a6b",
+  "context": {"id": "course-1", "title": "Biology 1", "label": "BIO1"},
+  "resource_link": {"id": "link-1", "title": "Cell quiz", "description": "Ten questions"},
+  "locale": "sv",
+  "user": {"name": "Ada Lovelace", "given_name": "Ada", "family_name": "Lovelace", "email": "ada@example.com"},
+  "sharing": {"name": true, "email": true},
+  "custom": {
+    "user": "$User.id",
+    "full": "$Person.name.full",
+    "given": "$Person.name.given",
+    "family": "$Person.name.family",
+    "email": "$Person.email.primary",
+    "context": "$Context.id",
+    "context_title": "$Context.title",
+    "context_label": "$Context.label",
+    "link": "$ResourceLink.id",
+    "link_title": "$ResourceLink.title",
+    "link_description": "$ResourceLink.description",
+    "locale": "$Message.locale"
+  },
+  "expect_custom": {
+    "user": "3f2a8c1e-7d4b-4e8f-9a6c-1b2d3e4f5a6b",
+    "full": "Ada Lovelace",
+    "given": "Ada",
+    "family": "Lovelace",
+    "email": "ada@example.com",
+    "context": "course-1",
+    "context_title": "Biology 1",
+    "context_label": "BIO1",
+    "link": "link-1",
+    "link_title": "Cell quiz",
+    "link_description": "Ten questions",
+    "locale": "sv"
+  }
+}

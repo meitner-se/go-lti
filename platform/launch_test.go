@@ -138,7 +138,10 @@ func TestLauncher_IDTokenClaims_ResourceLinkRequest(t *testing.T) {
 
 	launcher := createTestLauncher(t, ltitest.NewSigningKey(t))
 
-	claims, err := launcher.idTokenClaims(createTestTool(), "nonce-1", createTestResourceLinkRequest(), testNow)
+	msg := createTestResourceLinkRequest()
+	msg.Custom = map[string]string{"course": "$Context.id", "quiz": "$ResourceLink.title", "name": "$Person.name.full"}
+
+	claims, err := launcher.idTokenClaims(createTestTool(), "nonce-1", msg, testNow)
 	require.NoError(t, err)
 
 	assert.JSONEq(t, `{
@@ -161,6 +164,7 @@ func TestLauncher_IDTokenClaims_ResourceLinkRequest(t *testing.T) {
 		},
 		"https://purl.imsglobal.org/spec/lti/claim/resource_link": {"id": "link-1", "title": "Cell quiz"},
 		"https://purl.imsglobal.org/spec/lti/claim/launch_presentation": {"document_target": "iframe", "locale": "sv"},
+		"https://purl.imsglobal.org/spec/lti/claim/custom": {"course": "course-1", "quiz": "Cell quiz", "name": "$Person.name.full"},
 		"https://purl.imsglobal.org/spec/lti/claim/tool_platform": {
 			"guid": "platform-1",
 			"name": "Example LMS",
@@ -271,6 +275,180 @@ func TestLauncher_IDTokenClaims_SharesPersonalDataOnlyWhenAllowed(t *testing.T) 
 			assert.Equal(t, tt.want, got)
 			assert.Equal(t, "3f2a8c1e-7d4b-4e8f-9a6c-1b2d3e4f5a6b", claims["sub"])
 		})
+	}
+}
+
+func TestLauncher_IDTokenClaims_SubstitutesCustomFromTheMessage(t *testing.T) {
+	t.Parallel()
+
+	launcher := createTestLauncher(t, ltitest.NewSigningKey(t))
+
+	msg := createTestResourceLinkRequest()
+	msg.Context.Label = "BIO1"
+	msg.ResourceLink.Description = "Ten questions"
+	msg.Sharing = lti.Sharing{Name: true, Email: true}
+	msg.Custom = map[string]string{
+		"user":        "$User.id",
+		"full":        "$Person.name.full",
+		"given":       "$Person.name.given",
+		"family":      "$Person.name.family",
+		"email":       "$Person.email.primary",
+		"context":     "$Context.id",
+		"title":       "$Context.title",
+		"label":       "$Context.label",
+		"link":        "$ResourceLink.id",
+		"link_title":  "$ResourceLink.title",
+		"description": "$ResourceLink.description",
+		"locale":      "$Message.locale",
+		"literal":     "BIO1",
+	}
+
+	claims, err := launcher.idTokenClaims(createTestTool(), "nonce-1", msg, testNow)
+	require.NoError(t, err)
+
+	assert.Equal(t, map[string]string{
+		"user":        "3f2a8c1e-7d4b-4e8f-9a6c-1b2d3e4f5a6b",
+		"full":        "Ada Lovelace",
+		"given":       "Ada",
+		"family":      "Lovelace",
+		"email":       "ada@example.com",
+		"context":     "course-1",
+		"title":       "Biology 1",
+		"label":       "BIO1",
+		"link":        "link-1",
+		"link_title":  "Cell quiz",
+		"description": "Ten questions",
+		"locale":      "sv",
+		"literal":     "BIO1",
+	}, claims[lti.ClaimCustom])
+	assert.Equal(t, "$Context.id", msg.Custom["context"], "the message's template is left as it was")
+}
+
+func TestLauncher_IDTokenClaims_SuppliedVariables(t *testing.T) {
+	t.Parallel()
+
+	launcher := createTestLauncher(t, ltitest.NewSigningKey(t))
+
+	msg := createTestResourceLinkRequest()
+	msg.Sharing = lti.Sharing{Name: true}
+	msg.Custom = map[string]string{
+		"username": "$User.username",
+		"term":     "$CourseSection.timeFrame.begin",
+		"context":  "$Context.id",
+		"label":    "$Context.label",
+		"history":  "$Context.id.history",
+	}
+	msg.Variables = map[lti.Variable]string{
+		lti.VariableUserUsername:        "ada",
+		"CourseSection.timeFrame.begin": "2026-08-17",
+		lti.VariableContextID:           "another-course",
+		lti.VariableContextLabel:        "BIO",
+	}
+
+	claims, err := launcher.idTokenClaims(createTestTool(), "nonce-1", msg, testNow)
+	require.NoError(t, err)
+
+	assert.Equal(t, map[string]string{
+		"username": "ada",
+		"term":     "2026-08-17",
+		"context":  "course-1",
+		"label":    "BIO",
+		"history":  "$Context.id.history",
+	}, claims[lti.ClaimCustom], "the message's own values win; the rest come from Variables or stay as they are")
+}
+
+func TestRegression_LaunchKeepsPersonalVariablesUnlessShared(t *testing.T) {
+	t.Parallel()
+
+	launcher := createTestLauncher(t, ltitest.NewSigningKey(t))
+
+	msg := createTestResourceLinkRequest()
+	msg.Custom = map[string]string{
+		"name":     "$Person.name.full",
+		"given":    "$Person.name.given",
+		"email":    "$Person.email.primary",
+		"username": "$User.username",
+		"phone":    "$Person.phone.mobile",
+		"user":     "$User.id",
+	}
+	msg.Variables = map[lti.Variable]string{lti.VariableUserUsername: "ada", "Person.phone.mobile": "+46700000000"}
+
+	claims, err := launcher.idTokenClaims(createTestTool(), "nonce-1", msg, testNow)
+	require.NoError(t, err)
+
+	assert.Equal(t, map[string]string{
+		"name":     "$Person.name.full",
+		"given":    "$Person.name.given",
+		"email":    "$Person.email.primary",
+		"username": "$User.username",
+		"phone":    "$Person.phone.mobile",
+		"user":     "3f2a8c1e-7d4b-4e8f-9a6c-1b2d3e4f5a6b",
+	}, claims[lti.ClaimCustom], "nothing about the user is shared by default")
+
+	msg.Sharing = lti.Sharing{Email: true}
+
+	claims, err = launcher.idTokenClaims(createTestTool(), "nonce-1", msg, testNow)
+	require.NoError(t, err)
+
+	assert.Equal(t, map[string]string{
+		"name":     "$Person.name.full",
+		"given":    "$Person.name.given",
+		"email":    "ada@example.com",
+		"username": "$User.username",
+		"phone":    "$Person.phone.mobile",
+		"user":     "3f2a8c1e-7d4b-4e8f-9a6c-1b2d3e4f5a6b",
+	}, claims[lti.ClaimCustom])
+}
+
+func TestLauncher_IDTokenClaims_KeepsVariablesTheMessageDoesntCarry(t *testing.T) {
+	t.Parallel()
+
+	launcher := createTestLauncher(t, ltitest.NewSigningKey(t))
+
+	msg := createTestDeepLinkingRequest()
+	msg.Context = nil
+	msg.Presentation.Locale = ""
+	msg.Custom = map[string]string{
+		"context": "$Context.id",
+		"link":    "$ResourceLink.id",
+		"locale":  "$Message.locale",
+		"user":    "$User.id",
+	}
+
+	claims, err := launcher.idTokenClaims(createTestTool(), "nonce-1", msg, testNow)
+	require.NoError(t, err)
+
+	assert.Equal(t, map[string]string{
+		"context": "$Context.id",
+		"link":    "$ResourceLink.id",
+		"locale":  "$Message.locale",
+		"user":    "3f2a8c1e-7d4b-4e8f-9a6c-1b2d3e4f5a6b",
+	}, claims[lti.ClaimCustom])
+}
+
+func TestLaunchVariables_AreTheOnesALaunchFills(t *testing.T) {
+	t.Parallel()
+
+	launcher := createTestLauncher(t, ltitest.NewSigningKey(t))
+
+	msg := createTestResourceLinkRequest()
+	msg.Context.Label = "BIO1"
+	msg.ResourceLink.Description = "Ten questions"
+	msg.Sharing = lti.Sharing{Name: true, Email: true}
+	msg.Custom = map[string]string{}
+
+	for _, variable := range LaunchVariables() {
+		msg.Custom[string(variable)] = "$" + string(variable)
+	}
+
+	claims, err := launcher.idTokenClaims(createTestTool(), "nonce-1", msg, testNow)
+	require.NoError(t, err)
+
+	custom, ok := claims[lti.ClaimCustom].(map[string]string)
+	require.True(t, ok)
+
+	for name, value := range custom {
+		assert.NotEqual(t, "$"+name, value, "a launch fills %s", name)
 	}
 }
 

@@ -1,7 +1,8 @@
 # Test vectors
 
 Plain JSON cases with their expected results, so that go-lti's tests and an LTI implementation in
-another language can run the same cases. Each file is one case with a `description` and `valid`.
+another language can run the same cases. Each file is one case with a `description`, and a `valid`
+where the case can be refused.
 
 ## `jwks/`
 
@@ -48,3 +49,13 @@ A case taken from the spec carries its own `platform_issuer`, `client_id` and `d
 A valid case has the number of `items` returned. An invalid case has the `error_code` and a
 substring of its `error_description`. Every item URL must be https (LTI 1.3 §3.5); items needn't
 be on the tool's domains.
+
+## `substitution/`
+
+A launch message and the `custom` parameters it is sent with, as configured. `message_type` is
+`LtiResourceLinkRequest` or `LtiDeepLinkingRequest`; `sub`, `context`, `resource_link`, `locale`
+(the launch presentation's) and `user` are what the message carries, `sharing` says whether the
+user's `name` and `email` may be shared, and `variables` are the values the caller supplies for
+variables the message doesn't carry. `expect_custom` is the custom claim the launch sends: each
+value that is exactly `$` and a variable from LTI 1.3 Appendix B takes the message's value, else
+the supplied one, else stays as it is. Every case is valid.

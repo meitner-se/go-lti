@@ -131,6 +131,8 @@ const (
 // values, or that only contain one, stay as they are, as the spec requires for variables the
 // platform doesn't support; put a supported variable that has no value in values as "".
 //
+// A launch already substitutes Common.Custom; Substitute is for custom parameters sent elsewhere.
+//
 // Variables about the user are only replaced when sharing allows: Person.name.* and User.username
 // need Name, Person.email.* needs Email, and the other Person.* variables are never replaced, since
 // Sharing has no setting for them.

@@ -76,8 +76,13 @@ type Common struct {
 	Context *LaunchContext
 	// Presentation is how the platform shows the tool.
 	Presentation Presentation
-	// Custom are the custom parameters of the link or tool, already substituted.
+	// Custom are the custom parameters of the link or tool, as configured. The launch substitutes
+	// their variables (LTI 1.3 §5.4.6, Appendix B), taking each value from the message itself, such
+	// as Context.id from Context, or else from Variables.
 	Custom map[string]string
+	// Variables are values for substitution variables the message doesn't carry, such as
+	// User.username. Where the message carries a variable's value, that value wins.
+	Variables map[Variable]string
 	// User is the user's name and email address. Only what Sharing allows is sent.
 	User User
 	// Sharing is what the platform may share with this tool. The zero value shares nothing.
