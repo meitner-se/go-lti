@@ -5,9 +5,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"html"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -15,6 +17,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/meitner-se/go-lti"
+	"github.com/meitner-se/go-lti/jwks"
+	"github.com/meitner-se/go-lti/ltitest"
 )
 
 // granting grants client-1 to registrations with token-1 and refuses every other token. It
@@ -329,4 +333,262 @@ func TestNewHandler_Registration(t *testing.T) {
 		requireRegistrationErrorResponse(t, w, http.StatusInternalServerError, lti.ErrorServerError, "the registration could not be saved; try again")
 		assert.Equal(t, []error{failure}, logged)
 	})
+}
+
+// launchHandler serves launches with launch, recording the message hints it was called with.
+func launchHandler(t *testing.T, hints *[]string, launch func(r *http.Request, req *AuthenticationRequest) (*Launch, error)) http.Handler {
+	t.Helper()
+
+	return newTestHandler(t, Handlers{
+		Register: granting(&[]string{}),
+		Keys:     ltitest.NewKeys(t, ltitest.NewSigningKey(t)),
+		Launch: func(r *http.Request, req *AuthenticationRequest) (*Launch, error) {
+			*hints = append(*hints, req.MessageHint)
+
+			return launch(r, req)
+		},
+	})
+}
+
+func launchingTestLaunch(*http.Request, *AuthenticationRequest) (*Launch, error) {
+	launch := createTestLaunch()
+
+	return &launch, nil
+}
+
+// postedFields returns the hidden fields of an auto-submitting form page and the URL it posts to.
+func postedFields(t *testing.T, w *httptest.ResponseRecorder) (string, map[string]string) {
+	t.Helper()
+
+	action := regexp.MustCompile(`<form method="post" action="([^"]*)">`).FindStringSubmatch(w.Body.String())
+	require.Len(t, action, 2, w.Body.String())
+
+	fields := map[string]string{}
+	for _, input := range hiddenInput.FindAllStringSubmatch(w.Body.String(), -1) {
+		fields[input[1]] = html.UnescapeString(input[2])
+	}
+
+	return html.UnescapeString(action[1]), fields
+}
+
+func TestNewHandler_Launch(t *testing.T) {
+	t.Parallel()
+
+	t.Run("a GET authentication request is answered with a signed id_token posted to the tool", func(t *testing.T) {
+		t.Parallel()
+
+		var hints []string
+
+		handler := launchHandler(t, &hints, launchingTestLaunch)
+
+		w := serve(t, handler, http.MethodGet, "/lti/authorize?"+createTestAuthenticationForm().Encode(), "", "")
+
+		require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+		assert.Equal(t, "no-store", w.Header().Get("Cache-Control"))
+
+		action, fields := postedFields(t, w)
+		assert.Equal(t, "https://tool.example.com/launch", action)
+		assert.Equal(t, "state-1", fields["state"])
+		assert.NotEmpty(t, fields["id_token"])
+		assert.Equal(t, []string{"launch-hint-1"}, hints)
+	})
+
+	t.Run("a POSTed authentication request is read from the body, not the query", func(t *testing.T) {
+		t.Parallel()
+
+		var hints []string
+
+		handler := launchHandler(t, &hints, launchingTestLaunch)
+
+		req := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/lti/authorize", strings.NewReader(createTestAuthenticationForm().Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+		_, fields := postedFields(t, w)
+		assert.NotEmpty(t, fields["id_token"])
+
+		queryOnly := httptest.NewRequestWithContext(t.Context(), http.MethodPost, "/lti/authorize?"+createTestAuthenticationForm().Encode(), http.NoBody)
+		queryOnly.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+		w = httptest.NewRecorder()
+		handler.ServeHTTP(w, queryOnly)
+
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+		assert.Contains(t, w.Body.String(), "client_id is missing")
+		assert.Equal(t, []string{"launch-hint-1"}, hints, "a POST's query never reaches Launch")
+	})
+
+	t.Run("a request without a message hint gets an error page and never reaches Launch", func(t *testing.T) {
+		t.Parallel()
+
+		var hints []string
+
+		handler := launchHandler(t, &hints, launchingTestLaunch)
+
+		form := createTestAuthenticationForm()
+		form.Del("lti_message_hint")
+
+		w := serve(t, handler, http.MethodGet, "/lti/authorize?"+form.Encode(), "", "")
+
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+		assert.Equal(t, "no-store", w.Header().Get("Cache-Control"))
+		assert.Contains(t, w.Body.String(), "The launch could not be completed: lti_message_hint is missing.")
+		assert.Empty(t, hints)
+	})
+
+	t.Run("a hint that can't be redeemed gets an error page", func(t *testing.T) {
+		t.Parallel()
+
+		var hints []string
+
+		handler := launchHandler(t, &hints, func(*http.Request, *AuthenticationRequest) (*Launch, error) {
+			return nil, lti.NewError(lti.ErrorLoginRequired, "the launch has expired", nil)
+		})
+
+		w := serve(t, handler, http.MethodGet, "/lti/authorize?"+createTestAuthenticationForm().Encode(), "", "")
+
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+		assert.Contains(t, w.Body.String(), "The launch could not be completed: the launch has expired.")
+		assert.NotContains(t, w.Body.String(), "<form")
+	})
+
+	t.Run("a platform failure without a launch gets an error page that says nothing more", func(t *testing.T) {
+		t.Parallel()
+
+		var hints []string
+
+		handler := launchHandler(t, &hints, func(*http.Request, *AuthenticationRequest) (*Launch, error) {
+			return nil, errors.New("database down at 10.0.0.12")
+		})
+
+		w := serve(t, handler, http.MethodGet, "/lti/authorize?"+createTestAuthenticationForm().Encode(), "", "")
+
+		assert.Equal(t, http.StatusInternalServerError, w.Code)
+		assert.NotContains(t, w.Body.String(), "10.0.0.12")
+	})
+
+	t.Run("an error returned with the launch goes to the tool", func(t *testing.T) {
+		t.Parallel()
+
+		var hints []string
+
+		handler := launchHandler(t, &hints, func(*http.Request, *AuthenticationRequest) (*Launch, error) {
+			launch := createTestLaunch()
+
+			return &launch, lti.NewError(lti.ErrorLoginRequired, "the signed-in user is not the one the launch was started for", nil)
+		})
+
+		w := serve(t, handler, http.MethodGet, "/lti/authorize?"+createTestAuthenticationForm().Encode(), "", "")
+
+		require.Equal(t, http.StatusOK, w.Code)
+		action, fields := postedFields(t, w)
+		assert.Equal(t, "https://tool.example.com/launch", action)
+		assert.Equal(t, map[string]string{
+			"error":             "login_required",
+			"error_description": "the signed-in user is not the one the launch was started for",
+			"state":             "state-1",
+		}, fields)
+	})
+
+	t.Run("an invalid request with a hint still reaches Launch, and its error goes to the tool", func(t *testing.T) {
+		t.Parallel()
+
+		var hints []string
+
+		handler := launchHandler(t, &hints, launchingTestLaunch)
+
+		form := createTestAuthenticationForm()
+		form.Set("prompt", "login")
+
+		w := serve(t, handler, http.MethodGet, "/lti/authorize?"+form.Encode(), "", "")
+
+		require.Equal(t, http.StatusOK, w.Code)
+		_, fields := postedFields(t, w)
+		assert.Equal(t, "invalid_request", fields["error"])
+		assert.Equal(t, "prompt must be none", fields["error_description"])
+		assert.Equal(t, []string{"launch-hint-1"}, hints)
+	})
+
+	t.Run("a redirect_uri the tool hasn't registered never receives an answer", func(t *testing.T) {
+		t.Parallel()
+
+		var hints []string
+
+		handler := launchHandler(t, &hints, launchingTestLaunch)
+
+		form := createTestAuthenticationForm()
+		form.Set("redirect_uri", "https://attacker.example.net/collect")
+
+		w := serve(t, handler, http.MethodGet, "/lti/authorize?"+form.Encode(), "", "")
+
+		assert.Equal(t, http.StatusBadRequest, w.Code)
+		assert.NotContains(t, w.Body.String(), "attacker.example.net")
+		assert.NotContains(t, w.Body.String(), "<form")
+	})
+
+	t.Run("Logger and OnError see launch errors", func(t *testing.T) {
+		t.Parallel()
+
+		var (
+			logs   bytes.Buffer
+			logged []error
+		)
+
+		handler := newTestHandler(t, Handlers{
+			Register: granting(&[]string{}),
+			Keys:     ltitest.NewKeys(t, ltitest.NewSigningKey(t)),
+			Launch: func(*http.Request, *AuthenticationRequest) (*Launch, error) {
+				return nil, lti.NewError(lti.ErrorLoginRequired, "the launch has expired", nil)
+			},
+			Logger:  slog.New(slog.NewJSONHandler(&logs, nil)),
+			OnError: func(_ *http.Request, err error) { logged = append(logged, err) },
+		})
+
+		serve(t, handler, http.MethodGet, "/lti/authorize?"+createTestAuthenticationForm().Encode(), "", "")
+
+		require.Len(t, logged, 1)
+		assert.Contains(t, logs.String(), `"code":"login_required"`)
+		assert.Contains(t, logs.String(), `"path":"/lti/authorize"`)
+	})
+}
+
+func TestNewHandler_JWKS(t *testing.T) {
+	t.Parallel()
+
+	key := ltitest.NewSigningKey(t)
+	handler := newTestHandler(t, Handlers{
+		Register: granting(&[]string{}),
+		Keys:     ltitest.NewKeys(t, key),
+		Launch:   launchingTestLaunch,
+	})
+
+	w := serve(t, handler, http.MethodGet, "/lti/jwks", "", "")
+
+	require.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
+	assert.Equal(t, "*", w.Header().Get("Access-Control-Allow-Origin"))
+	assert.Equal(t, "public, max-age=300", w.Header().Get("Cache-Control"))
+
+	keys, err := jwks.ParseSet(w.Body.Bytes())
+	require.NoError(t, err)
+	require.Len(t, keys, 1)
+	assert.Equal(t, key.ID, keys[0].ID)
+}
+
+func TestNewHandler_LaunchEndpointsNeedKeysAndLaunch(t *testing.T) {
+	t.Parallel()
+
+	_, err := NewHandler(createTestConfig(), Handlers{Register: granting(&[]string{}), Keys: ltitest.NewKeys(t, ltitest.NewSigningKey(t))})
+	require.Error(t, err)
+
+	_, err = NewHandler(createTestConfig(), Handlers{Register: granting(&[]string{}), Launch: launchingTestLaunch})
+	require.Error(t, err)
+
+	handler := newTestHandler(t, Handlers{Register: granting(&[]string{})})
+
+	assert.Equal(t, http.StatusNotFound, serve(t, handler, http.MethodGet, "/lti/jwks", "", "").Code)
+	assert.Equal(t, http.StatusNotFound, serve(t, handler, http.MethodGet, "/lti/authorize", "", "").Code)
 }

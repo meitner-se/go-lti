@@ -41,45 +41,32 @@ Launch a tool. The hints are opaque to go-lti: your platform decides what they a
 
 ```go
 keys, err := lti.StaticKeys(lti.SigningKey{Signer: privateKey}) // kid defaults to the key's thumbprint
-launcher, err := platform.NewLauncher(cfg, keys)
 
 // 1. Where the user clicks: redirect the browser to the tool.
 initiation := platform.LoginInitiation{DeploymentID: deploymentID, LoginHint: userHint, MessageHint: launchHint}
 loginURL, err := cfg.LoginInitiationURL(tool, initiation)
 
-// 2. At cfg.Endpoints().Authorization: the tool's authentication request, from the query for a GET or
-// from r.PostForm (after r.ParseForm) for a POST. r.Form merges both, which counts as repeating
-// any parameter that appears in each.
-req, err := platform.ParseAuthenticationRequest(r.URL.Query())
-if err != nil {
-	if errorForm, ok := launcher.RespondError(req, tool, err); ok {
-		errorForm.ServeHTTP(w, r)
-		return
-	}
-	http.Error(w, "the launch request is invalid", http.StatusBadRequest)
-	return
-}
-
-// 3. Redeem req.MessageHint for the launch and its initiation, check that the logged-in user is the
-// one the login_hint stands for, then answer with the signed id_token.
-form, err := launcher.Respond(ctx, req, platform.Launch{
-	Tool:       tool,
-	Initiation: initiation,
-	Message: &lti.ResourceLinkRequest{
-		Common:       lti.Common{DeploymentID: deploymentID, Subject: sub, Roles: []lti.Role{lti.RoleLearner}},
-		ResourceLink: lti.ResourceLink{ID: linkID},
+// 2. The tool's authentication request comes back to Paths.Authorization. NewHandler parses it,
+// calls your Launch, signs the id_token and posts it to the tool, or sends it the error. It also
+// serves your public keys at Paths.JWKS.
+handler, err := platform.NewHandler(cfg, platform.Handlers{
+	Register: register,
+	Keys:     keys,
+	Launch: func(r *http.Request, req *platform.AuthenticationRequest) (*platform.Launch, error) {
+		// Redeem req.MessageHint, and check that a session in r belongs to the launch's user.
+		return &platform.Launch{
+			Tool:       tool,
+			Initiation: initiation,
+			Message: &lti.ResourceLinkRequest{
+				Common:       lti.Common{DeploymentID: deploymentID, Subject: sub, Roles: []lti.Role{lti.RoleLearner}},
+				ResourceLink: lti.ResourceLink{ID: linkID},
+			},
+		}, nil
 	},
 })
-if err != nil {
-	if errorForm, ok := launcher.RespondError(req, tool, err); ok {
-		errorForm.ServeHTTP(w, r)
-	}
-	return
-}
-form.ServeHTTP(w, r) // auto-submits id_token and state to the tool, with a strict CSP
-
-// Serve launcher.JWKS(ctx) at cfg.Endpoints().JWKS.
 ```
+
+A platform with its own HTTP handling can call `platform.ParseAuthenticationRequest`, `platform.NewLauncher(cfg, keys)`, `launcher.Respond`, `launcher.RespondError` and `launcher.JWKS` itself.
 
 Fill custom parameters with `lti.Substitute(custom, values, sharing)`: variables about the user are only filled in when the tool's sharing allows.
 
