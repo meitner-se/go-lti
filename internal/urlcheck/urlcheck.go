@@ -32,21 +32,40 @@ func IsHTTPS(raw string) bool {
 // OnDomains reports whether raw is an https URL whose host is one of domains or a subdomain of
 // one. Domains that aren't valid domains, or are public suffixes, never match.
 func OnDomains(raw string, domains []string) bool {
+	return NewDomainSet(domains).Contains(raw)
+}
+
+// DomainSet is a set of domains to check URLs against. A check costs one lookup per label of the
+// URL's host however many domains the set holds, so many URLs can be checked against many domains.
+type DomainSet map[string]struct{}
+
+// NewDomainSet returns the valid domains among domains, normalized. Public suffixes are left out.
+func NewDomainSet(domains []string) DomainSet {
+	set := make(DomainSet, len(domains))
+
+	for _, domain := range domains {
+		if domain = NormalizeDomain(domain); IsDomain(domain) {
+			set[domain] = struct{}{}
+		}
+	}
+
+	return set
+}
+
+// Contains reports whether raw is an https URL whose host is one of the set's domains or a
+// subdomain of one.
+func (s DomainSet) Contains(raw string) bool {
 	u, ok := ParseHTTPS(raw)
 	if !ok {
 		return false
 	}
 
-	host := NormalizeDomain(u.Hostname())
-	for _, domain := range domains {
-		domain = NormalizeDomain(domain)
-		if !IsDomain(domain) {
-			continue
-		}
-
-		if host == domain || strings.HasSuffix(host, "."+domain) {
+	for host := NormalizeDomain(u.Hostname()); host != ""; {
+		if _, ok := s[host]; ok {
 			return true
 		}
+
+		_, host, _ = strings.Cut(host, ".")
 	}
 
 	return false
