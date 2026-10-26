@@ -12,24 +12,18 @@ import (
 	"github.com/meitner-se/go-lti"
 )
 
-// errRegistrationNotSaved answers a registration the Registrar failed to save for a reason of its own.
+// errRegistrationNotSaved answers a registration Register failed to save for a reason of its own.
 var errRegistrationNotSaved = lti.NewError(lti.ErrorServerError, "the registration could not be saved; try again", nil)
 
 // Handlers are the platform's own parts of the endpoints NewHandler serves.
 type Handlers struct {
-	// Registrar saves the tools that register through Dynamic Registration. Required.
-	Registrar Registrar
+	// Register saves a tool that sent a valid Dynamic Registration and returns what the platform
+	// granted it. token is the registration token the tool sent as a Bearer token, or "" when it
+	// sent none. An *lti.Error, such as lti.ErrorInvalidToken for a refused token, is sent to the
+	// tool as it is; any other error is answered as a server_error that says nothing more. Required.
+	Register func(ctx context.Context, token string, reg *Registration) (RegistrationGrant, error)
 	// OnError, when set, is called with every error a tool is answered with, for logging.
 	OnError func(r *http.Request, err error)
-}
-
-// Registrar saves a tool that sent a valid Dynamic Registration.
-type Registrar interface {
-	// Register saves the tool reg describes and returns what the platform granted it. token is the
-	// registration token the tool sent as a Bearer token, or "" when it sent none. An *lti.Error,
-	// such as lti.ErrorInvalidToken for a refused token, is sent to the tool as it is; any other
-	// error is answered as a server_error that says nothing more.
-	Register(ctx context.Context, token string, reg *Registration) (RegistrationGrant, error)
 }
 
 // NewHandler returns an http.Handler that serves the platform's endpoints at the issuer's path
@@ -41,10 +35,10 @@ type Registrar interface {
 //
 // Mount it to receive every request under the issuer's path, with the path unchanged. Any other
 // path is a 404 and any other method a 405. It fails when cfg can't make an OpenID configuration
-// or h has no Registrar.
+// or h has no Register.
 func NewHandler(cfg Config, h Handlers) (http.Handler, error) {
-	if h.Registrar == nil {
-		return nil, errors.New("lti: the handler needs a registrar")
+	if h.Register == nil {
+		return nil, errors.New("lti: the handler needs a Register function")
 	}
 
 	document, err := cfg.OpenIDConfiguration()
@@ -69,7 +63,7 @@ func NewHandler(cfg Config, h Handlers) (http.Handler, error) {
 
 	mux := http.NewServeMux()
 	mux.Handle("GET "+issuer.Path+PathOpenIDConfiguration, openIDConfigurationHandler(discovery))
-	mux.Handle("POST "+issuer.Path+PathRegistration, &registrationEndpoint{registrar: h.Registrar, onError: h.OnError})
+	mux.Handle("POST "+issuer.Path+PathRegistration, &registrationEndpoint{register: h.Register, onError: h.OnError})
 
 	return mux, nil
 }
@@ -85,13 +79,13 @@ func openIDConfigurationHandler(body []byte) http.Handler {
 
 // registrationEndpoint answers a POSTed registration. It reads the registration token from the
 // Authorization header's Bearer scheme, refuses a body over MaxRegistrationBytes, checks the body
-// with ParseRegistration and hands it to the Registrar. A saved registration is answered 201
+// with ParseRegistration and hands it to Register. A saved registration is answered 201
 // Created (OpenID Connect Registration §3.2) with Response(grant); a rejection with RFC 7591
 // §3.2.2's error response, plus a Bearer challenge for invalid_token (RFC 6750 §3). Every answer
 // has Cache-Control: no-store.
 type registrationEndpoint struct {
-	registrar Registrar
-	onError   func(r *http.Request, err error)
+	register func(ctx context.Context, token string, reg *Registration) (RegistrationGrant, error)
+	onError  func(r *http.Request, err error)
 }
 
 func (e *registrationEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -112,7 +106,7 @@ func (e *registrationEndpoint) ServeHTTP(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	grant, err := e.registrar.Register(r.Context(), bearerToken(r.Header.Get("Authorization")), reg)
+	grant, err := e.register(r.Context(), bearerToken(r.Header.Get("Authorization")), reg)
 	if err != nil {
 		e.fail(w, r, err)
 

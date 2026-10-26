@@ -111,9 +111,9 @@ Handle a Dynamic Registration:
 // Send the admin's browser to the tool's registration URL.
 startURL, err := cfg.RegistrationInitiationURL(toolRegistrationURL, cfg.Endpoints().OpenIDConfiguration, registrationToken)
 
-// Serve the OpenID configuration and the registration endpoint. Your Registrar checks the token,
+// Serve the OpenID configuration and the registration endpoint. Your Register checks the token,
 // saves the tool and returns what it granted; the handler answers the tool per the spec.
-handler, err := platform.NewHandler(cfg, platform.Handlers{Registrar: registrar})
+handler, err := platform.NewHandler(cfg, platform.Handlers{Register: register})
 http.Handle("/lti/", handler) // everything under the issuer's path, with the path unchanged
 
 // In Register, before activating the tool:

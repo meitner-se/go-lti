@@ -15,17 +15,10 @@ import (
 	"github.com/meitner-se/go-lti"
 )
 
-// registrarFunc is a Registrar from a function.
-type registrarFunc func(ctx context.Context, token string, reg *Registration) (RegistrationGrant, error)
-
-func (f registrarFunc) Register(ctx context.Context, token string, reg *Registration) (RegistrationGrant, error) {
-	return f(ctx, token, reg)
-}
-
-// grantingRegistrar grants client-1 to registrations with token-1 and refuses every other token. It
+// granting grants client-1 to registrations with token-1 and refuses every other token. It
 // records the tokens it was called with.
-func grantingRegistrar(tokens *[]string) Registrar {
-	return registrarFunc(func(_ context.Context, token string, _ *Registration) (RegistrationGrant, error) {
+func granting(tokens *[]string) func(context.Context, string, *Registration) (RegistrationGrant, error) {
+	return func(_ context.Context, token string, _ *Registration) (RegistrationGrant, error) {
 		*tokens = append(*tokens, token)
 
 		if token != "token-1" {
@@ -33,7 +26,7 @@ func grantingRegistrar(tokens *[]string) Registrar {
 		}
 
 		return RegistrationGrant{ClientID: "client-1", DeploymentID: "", Scopes: nil, Claims: []string{"iss", "sub"}}, nil
-	})
+	}
 }
 
 func newTestHandler(t *testing.T, h Handlers) http.Handler {
@@ -82,7 +75,7 @@ func requireRegistrationErrorResponse(t *testing.T, w *httptest.ResponseRecorder
 func TestNewHandler(t *testing.T) {
 	t.Parallel()
 
-	handler := newTestHandler(t, Handlers{Registrar: grantingRegistrar(&[]string{}), OnError: nil})
+	handler := newTestHandler(t, Handlers{Register: granting(&[]string{}), OnError: nil})
 
 	t.Run("serves the OpenID configuration under the issuer's path", func(t *testing.T) {
 		t.Parallel()
@@ -130,26 +123,26 @@ func TestNewHandler(t *testing.T) {
 		cfg := createTestConfig()
 		cfg.Issuer = "https://platform.example.com/"
 
-		rootHandler, err := NewHandler(cfg, Handlers{Registrar: grantingRegistrar(&[]string{}), OnError: nil})
+		rootHandler, err := NewHandler(cfg, Handlers{Register: granting(&[]string{}), OnError: nil})
 		require.NoError(t, err)
 
 		assert.Equal(t, http.StatusOK, serve(t, rootHandler, http.MethodGet, PathOpenIDConfiguration, "", "").Code)
 	})
 
-	t.Run("fails without a registrar or a token endpoint, or with braces in the issuer's path", func(t *testing.T) {
+	t.Run("fails without Register or a token endpoint, or with braces in the issuer's path", func(t *testing.T) {
 		t.Parallel()
 
-		_, err := NewHandler(createTestConfig(), Handlers{Registrar: nil, OnError: nil})
+		_, err := NewHandler(createTestConfig(), Handlers{Register: nil, OnError: nil})
 		require.Error(t, err)
 
 		noToken := createTestConfig()
 		noToken.TokenEndpoint = ""
-		_, err = NewHandler(noToken, Handlers{Registrar: grantingRegistrar(&[]string{}), OnError: nil})
+		_, err = NewHandler(noToken, Handlers{Register: granting(&[]string{}), OnError: nil})
 		require.Error(t, err)
 
 		braces := createTestConfig()
 		braces.Issuer = "https://platform.example.com/{lti}"
-		_, err = NewHandler(braces, Handlers{Registrar: grantingRegistrar(&[]string{}), OnError: nil})
+		_, err = NewHandler(braces, Handlers{Register: granting(&[]string{}), OnError: nil})
 		require.Error(t, err)
 	})
 }
@@ -162,7 +155,7 @@ func TestNewHandler_Registration(t *testing.T) {
 
 		var tokens []string
 
-		handler := newTestHandler(t, Handlers{Registrar: grantingRegistrar(&tokens), OnError: nil})
+		handler := newTestHandler(t, Handlers{Register: granting(&tokens), OnError: nil})
 
 		w := postRegistration(t, handler, "bearer token-1", string(encodeRegistration(t, createTestRegistrationJSON())))
 
@@ -181,7 +174,7 @@ func TestNewHandler_Registration(t *testing.T) {
 	t.Run("a refused token is invalid_token with a Bearer challenge", func(t *testing.T) {
 		t.Parallel()
 
-		handler := newTestHandler(t, Handlers{Registrar: grantingRegistrar(&[]string{}), OnError: nil})
+		handler := newTestHandler(t, Handlers{Register: granting(&[]string{}), OnError: nil})
 
 		w := postRegistration(t, handler, "Bearer used", string(encodeRegistration(t, createTestRegistrationJSON())))
 
@@ -189,13 +182,13 @@ func TestNewHandler_Registration(t *testing.T) {
 		assert.Equal(t, `Bearer error="invalid_token"`, w.Header().Get("WWW-Authenticate"))
 	})
 
-	t.Run("a registration without a Bearer token reaches the registrar with an empty token", func(t *testing.T) {
+	t.Run("a registration without a Bearer token reaches Register with an empty token", func(t *testing.T) {
 		t.Parallel()
 
 		for _, authorization := range []string{"", "Basic dXNlcjpwYXNz", "Bearer", "token-1"} {
 			var tokens []string
 
-			handler := newTestHandler(t, Handlers{Registrar: grantingRegistrar(&tokens), OnError: nil})
+			handler := newTestHandler(t, Handlers{Register: granting(&tokens), OnError: nil})
 
 			w := postRegistration(t, handler, authorization, string(encodeRegistration(t, createTestRegistrationJSON())))
 
@@ -204,7 +197,7 @@ func TestNewHandler_Registration(t *testing.T) {
 		}
 	})
 
-	t.Run("an invalid registration is refused without calling the registrar", func(t *testing.T) {
+	t.Run("an invalid registration is refused without calling Register", func(t *testing.T) {
 		t.Parallel()
 
 		var (
@@ -213,8 +206,8 @@ func TestNewHandler_Registration(t *testing.T) {
 		)
 
 		handler := newTestHandler(t, Handlers{
-			Registrar: grantingRegistrar(&tokens),
-			OnError:   func(_ *http.Request, err error) { logged = append(logged, err) },
+			Register: granting(&tokens),
+			OnError:  func(_ *http.Request, err error) { logged = append(logged, err) },
 		})
 
 		body := createTestRegistrationJSON()
@@ -233,7 +226,7 @@ func TestNewHandler_Registration(t *testing.T) {
 
 		var tokens []string
 
-		handler := newTestHandler(t, Handlers{Registrar: grantingRegistrar(&tokens), OnError: nil})
+		handler := newTestHandler(t, Handlers{Register: granting(&tokens), OnError: nil})
 
 		body := createTestRegistrationJSON()
 		body["contacts"] = []string{strings.Repeat("a", MaxRegistrationBytes)}
@@ -244,16 +237,16 @@ func TestNewHandler_Registration(t *testing.T) {
 		assert.Empty(t, tokens)
 	})
 
-	t.Run("a registrar failure is a server_error that says nothing more", func(t *testing.T) {
+	t.Run("a Register failure is a server_error that says nothing more", func(t *testing.T) {
 		t.Parallel()
 
 		var logged []error
 
 		failure := errors.New("database connection refused at 10.0.0.12")
 		handler := newTestHandler(t, Handlers{
-			Registrar: registrarFunc(func(context.Context, string, *Registration) (RegistrationGrant, error) {
+			Register: func(context.Context, string, *Registration) (RegistrationGrant, error) {
 				return RegistrationGrant{}, failure
-			}),
+			},
 			OnError: func(_ *http.Request, err error) { logged = append(logged, err) },
 		})
 
