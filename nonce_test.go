@@ -65,15 +65,17 @@ func TestMemoryNonceStore_IsSafeForConcurrentUse(t *testing.T) {
 	expiresAt := time.Now().Add(time.Hour)
 
 	var (
-		fresh atomic.Int64
-		wg    sync.WaitGroup
+		fresh, failed atomic.Int64
+		wg            sync.WaitGroup
 	)
 
 	for range 50 {
 		wg.Go(func() {
 			for i := range 20 {
 				ok, err := store.Claim(t.Context(), "client-1", fmt.Sprintf("nonce-%d", i), expiresAt)
-				assert.NoError(t, err)
+				if err != nil {
+					failed.Add(1)
+				}
 
 				if ok {
 					fresh.Add(1)
@@ -84,5 +86,6 @@ func TestMemoryNonceStore_IsSafeForConcurrentUse(t *testing.T) {
 
 	wg.Wait()
 
+	assert.Zero(t, failed.Load(), "Claim never fails")
 	assert.Equal(t, int64(20), fresh.Load(), "each nonce is claimed exactly once")
 }

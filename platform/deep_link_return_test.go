@@ -162,6 +162,8 @@ func TestNewHandler_DeepLinkReturn(t *testing.T) {
 		{
 			name: "a valid response reaches HandleDeepLinkingResponse verified",
 			jwt: func(t *testing.T, d *deepLinkReturnTest) string {
+				t.Helper()
+
 				return d.sign(t, createTestDeepLinkingResponseClaims(time.Now()))
 			},
 			wantStatus:  http.StatusSeeOther,
@@ -171,6 +173,8 @@ func TestNewHandler_DeepLinkReturn(t *testing.T) {
 		{
 			name: "a response signed by another key reaches it rejected, with its session",
 			jwt: func(t *testing.T, _ *deepLinkReturnTest) string {
+				t.Helper()
+
 				return ltitest.Sign(t, ltitest.NewSigningKey(t), createTestDeepLinkingResponseClaims(time.Now()))
 			},
 			wantStatus:  http.StatusSeeOther,
@@ -181,6 +185,8 @@ func TestNewHandler_DeepLinkReturn(t *testing.T) {
 		{
 			name: "a response for another audience reaches it rejected",
 			jwt: func(t *testing.T, d *deepLinkReturnTest) string {
+				t.Helper()
+
 				claims := createTestDeepLinkingResponseClaims(time.Now())
 				claims["aud"] = "https://other-platform.example.com"
 
@@ -195,6 +201,8 @@ func TestNewHandler_DeepLinkReturn(t *testing.T) {
 			name: "a tool key that can't be fetched reaches it as the platform's failure",
 			opts: deepLinkReturnOptions{keysErr: errors.New("jwks fetch timed out")},
 			jwt: func(t *testing.T, d *deepLinkReturnTest) string {
+				t.Helper()
+
 				return d.sign(t, createTestDeepLinkingResponseClaims(time.Now()))
 			},
 			wantStatus:  http.StatusSeeOther,
@@ -236,6 +244,8 @@ func TestNewHandler_DeepLinkReturn(t *testing.T) {
 				return DeepLinkingSession{}, fmt.Errorf("request-1: %w", ErrDeepLinkingSessionNotFound)
 			}},
 			jwt: func(t *testing.T, d *deepLinkReturnTest) string {
+				t.Helper()
+
 				return d.sign(t, createTestDeepLinkingResponseClaims(time.Now()))
 			},
 			wantStatus:  http.StatusBadRequest,
@@ -248,6 +258,8 @@ func TestNewHandler_DeepLinkReturn(t *testing.T) {
 				return DeepLinkingSession{}, errors.New("database down at 10.0.0.12")
 			}},
 			jwt: func(t *testing.T, d *deepLinkReturnTest) string {
+				t.Helper()
+
 				return d.sign(t, createTestDeepLinkingResponseClaims(time.Now()))
 			},
 			wantStatus:  http.StatusInternalServerError,
