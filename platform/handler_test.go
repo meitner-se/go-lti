@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"html"
 	"log/slog"
 	"net/http"
@@ -439,6 +440,22 @@ func TestNewHandler_Launch(t *testing.T) {
 			_, fields := postedFields(t, w)
 			assert.NotEmpty(t, fields["id_token"], query)
 		}
+	})
+
+	t.Run("a POSTed body over the limit gets a 413 page and never reaches Launch", func(t *testing.T) {
+		t.Parallel()
+
+		var hints []string
+
+		handler := launchHandler(t, &hints, launchingTestLaunch)
+
+		form := createTestAuthenticationForm()
+		form.Set("padding", strings.Repeat("a", maxAuthenticationFormBytes))
+
+		w := postForm(t, handler, "/lti/authorize", form)
+
+		requireErrorPage(t, w, http.StatusRequestEntityTooLarge, fmt.Sprintf("The launch could not be completed: the request is larger than %d bytes.", maxAuthenticationFormBytes))
+		assert.Empty(t, hints)
 	})
 
 	t.Run("a request without a message hint gets an error page and never reaches Launch", func(t *testing.T) {

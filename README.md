@@ -108,7 +108,7 @@ handler, err := platform.NewHandler(cfg, platform.Handlers{
 })
 ```
 
-The claims `FindDeepLinkingSession` gets are read before the signature is checked, so they only serve as a key: the session you return comes from your own state, and the response is verified against it. A response with no session gets a plain error page: 400 for `ErrDeepLinkingSessionNotFound`, a missing or oversized JWT or one without any of the lookup claims, and 500 for any other lookup error. `HandleDeepLinkingResponse` gets the session even when verification fails, so you can send the user back to where they started with the error.
+The claims `FindDeepLinkingSession` gets are read before the signature is checked, so they only serve as a key: the session you return comes from your own state, and the response is verified against it. A response with no session gets a plain error page: 413 for a body over the form limit; 400 for `ErrDeepLinkingSessionNotFound`, a missing JWT, one over `MaxDeepLinkingResponseBytes` or one without any of the lookup claims; another `*lti.Error` from the lookup gets its own status; and a `server_error` or any other lookup error gets a 500 that says nothing more. `HandleDeepLinkingResponse` gets the session even when verification fails, so you can send the user back to where they started with the error.
 
 `nonces` must be shared by every replica and keep each nonce until the time `Claim` is given. `lti.MemoryNonceStore` only covers one process: use it with a single replica, or when your platform accepts one response per request anyway.
 

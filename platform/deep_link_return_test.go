@@ -217,12 +217,20 @@ func TestNewHandler_DeepLinkReturn(t *testing.T) {
 			wantPage:   "The content could not be added: deep linking response is missing.",
 		},
 		{
-			name: "an oversized JWT gets an error page",
+			name: "a JWT over MaxDeepLinkingResponseBytes in a form under the limit gets a 400 page",
 			jwt: func(*testing.T, *deepLinkReturnTest) string {
 				return strings.Repeat("a", MaxDeepLinkingResponseBytes+1)
 			},
 			wantStatus: http.StatusBadRequest,
 			wantPage:   "deep linking response is larger than 1 MiB",
+		},
+		{
+			name: "a form body over the limit gets a 413 page",
+			jwt: func(*testing.T, *deepLinkReturnTest) string {
+				return strings.Repeat("a", maxDeepLinkReturnFormBytes+1)
+			},
+			wantStatus: http.StatusRequestEntityTooLarge,
+			wantPage:   fmt.Sprintf("The content could not be added: the request is larger than %d bytes.", maxDeepLinkReturnFormBytes),
 		},
 		{
 			name:       "a JWT that isn't one gets an error page",
@@ -250,6 +258,34 @@ func TestNewHandler_DeepLinkReturn(t *testing.T) {
 			},
 			wantStatus:  http.StatusBadRequest,
 			wantPage:    "the deep linking request is unknown, has expired or was already answered",
+			wantLookups: 1,
+		},
+		{
+			name: "another rejection from the lookup gets a page with its own status",
+			opts: deepLinkReturnOptions{find: func(*http.Request, UnverifiedDeepLinkingResponse) (DeepLinkingSession, error) {
+				return DeepLinkingSession{}, lti.NewError(lti.ErrorInvalidClient, "the tool is disabled", nil)
+			}},
+			jwt: func(t *testing.T, d *deepLinkReturnTest) string {
+				t.Helper()
+
+				return d.sign(t, createTestDeepLinkingResponseClaims(time.Now()))
+			},
+			wantStatus:  http.StatusUnauthorized,
+			wantPage:    "The content could not be added: the tool is disabled.",
+			wantLookups: 1,
+		},
+		{
+			name: "a server_error from the lookup gets a 500 page that says nothing more",
+			opts: deepLinkReturnOptions{find: func(*http.Request, UnverifiedDeepLinkingResponse) (DeepLinkingSession, error) {
+				return DeepLinkingSession{}, lti.NewError(lti.ErrorServerError, "replica 10.0.0.12 is down", nil)
+			}},
+			jwt: func(t *testing.T, d *deepLinkReturnTest) string {
+				t.Helper()
+
+				return d.sign(t, createTestDeepLinkingResponseClaims(time.Now()))
+			},
+			wantStatus:  http.StatusInternalServerError,
+			wantPage:    "The content could not be added. Start again.",
 			wantLookups: 1,
 		},
 		{

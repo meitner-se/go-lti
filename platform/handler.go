@@ -66,8 +66,10 @@ type Handlers struct {
 	// so use it only as a lookup key; data is optional in the spec, so don't rely on it alone.
 	//
 	// Return an error that is or wraps ErrDeepLinkingSessionNotFound for a request that is unknown,
-	// has expired or was already answered; the browser gets a 400 error page. Any other error, such
-	// as the platform's storage being down, gets a 500 error page.
+	// has expired or was already answered; the browser gets a 400 error page. Any other *lti.Error
+	// gets an error page with its description and its StatusCode, except a server_error. A
+	// server_error, or an error that isn't an *lti.Error, such as the platform's storage being down,
+	// gets a 500 error page that says nothing more.
 	FindDeepLinkingSession func(r *http.Request, unverified UnverifiedDeepLinkingResponse) (DeepLinkingSession, error)
 	// HandleDeepLinkingResponse answers the browser once a session was found: with the verified
 	// response, or with the session and Verify's error, so that the platform can record the error
@@ -263,7 +265,7 @@ func (e *endpoints) failRegistration(w http.ResponseWriter, r *http.Request, err
 func (e *endpoints) authorize(w http.ResponseWriter, r *http.Request) {
 	form, err := authenticationForm(w, r)
 	if err != nil {
-		e.failLaunch(w, r, nil, nil, lti.NewError(lti.ErrorInvalidRequest, "the request could not be read", err))
+		e.failLaunch(w, r, nil, nil, unreadableForm(err))
 
 		return
 	}
@@ -315,15 +317,22 @@ func (e *endpoints) failLaunch(w http.ResponseWriter, r *http.Request, req *Auth
 }
 
 // writeErrorPage answers a browser with a plain-text page that says what failed: with a
-// rejection's description and status, or, for any other error, with nothing more than retry and a
-// 500. It can't be cached or load anything.
+// rejection's description and status, 413 for a body over its limit, or, for any other error,
+// with nothing more than retry and a 500. It can't be cached or load anything.
 func writeErrorPage(w http.ResponseWriter, err error, what, retry string) {
 	header := w.Header()
 	header.Set("Cache-Control", "no-store")
 	header.Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'")
 
 	if rejection, ok := lti.AsError(err); ok && rejection.Code != lti.ErrorServerError {
-		http.Error(w, fmt.Sprintf("%s: %s.", what, rejection.Description), rejection.StatusCode())
+		status := rejection.StatusCode()
+
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			status = http.StatusRequestEntityTooLarge
+		}
+
+		http.Error(w, fmt.Sprintf("%s: %s.", what, rejection.Description), status)
 
 		return
 	}
@@ -401,6 +410,17 @@ func postedForm(w http.ResponseWriter, r *http.Request, limit int64) (url.Values
 	}
 
 	return bodyOnly.PostForm, nil
+}
+
+// unreadableForm rejects a form postedForm couldn't read. A body over its limit keeps the
+// *http.MaxBytesError as its cause, which writeErrorPage answers with 413.
+func unreadableForm(err error) *lti.Error {
+	var tooLarge *http.MaxBytesError
+	if errors.As(err, &tooLarge) {
+		return lti.NewError(lti.ErrorInvalidRequest, fmt.Sprintf("the request is larger than %d bytes", tooLarge.Limit), err)
+	}
+
+	return lti.NewError(lti.ErrorInvalidRequest, "the request could not be read", err)
 }
 
 // cmpErr returns the first of errs that isn't nil.

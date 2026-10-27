@@ -116,7 +116,7 @@ type DeepLinkingResult struct {
 func (e *endpoints) deepLinkReturn(w http.ResponseWriter, r *http.Request) {
 	form, err := postedForm(w, r, maxDeepLinkReturnFormBytes)
 	if err != nil {
-		e.failDeepLinkReturn(w, r, lti.NewError(lti.ErrorInvalidRequest, "the request could not be read", err))
+		e.failDeepLinkReturn(w, r, unreadableForm(err))
 
 		return
 	}
