@@ -1,6 +1,9 @@
 package lti
 
-import "strings"
+import (
+	"fmt"
+	"strings"
+)
 
 // MessageType is an LTI message type.
 type MessageType string
@@ -92,6 +95,27 @@ const (
 	ContentItemTypeHTML            ContentItemType = "html"
 	ContentItemTypeImage           ContentItemType = "image"
 )
+
+// ParseDocumentTarget returns the DocumentTarget s names, or an error when it is none of them.
+func ParseDocumentTarget(s string) (DocumentTarget, error) {
+	switch target := DocumentTarget(s); target {
+	case DocumentTargetIframe, DocumentTargetWindow:
+		return target, nil
+	default:
+		return "", fmt.Errorf("lti: unknown document target %q", s)
+	}
+}
+
+// ParseContentItemType returns the ContentItemType s names, or an error when it is none of the
+// types Deep Linking 2.0 §3 defines.
+func ParseContentItemType(s string) (ContentItemType, error) {
+	switch itemType := ContentItemType(s); itemType {
+	case ContentItemTypeLTIResourceLink, ContentItemTypeLink, ContentItemTypeFile, ContentItemTypeHTML, ContentItemTypeImage:
+		return itemType, nil
+	default:
+		return "", fmt.Errorf("lti: unknown content item type %q", s)
+	}
+}
 
 // Scope is an LTI service scope.
 type Scope string

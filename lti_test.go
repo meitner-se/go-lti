@@ -139,6 +139,134 @@ func TestParseRSAPrivateKeyPEM_Rejects(t *testing.T) {
 	}
 }
 
+func newRSAKeyPEM(t *testing.T) (*rsa.PrivateKey, []byte) {
+	t.Helper()
+
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	require.NoError(t, err)
+
+	return key, pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(key)})
+}
+
+func TestParseKeysPEM(t *testing.T) {
+	t.Parallel()
+
+	current, currentPEM := newRSAKeyPEM(t)
+	next, nextPEM := newRSAKeyPEM(t)
+
+	t.Run("signs with the current key and publishes the next, each with its thumbprint as kid", func(t *testing.T) {
+		t.Parallel()
+
+		keys, err := lti.ParseKeysPEM(currentPEM, nextPEM)
+		require.NoError(t, err)
+
+		signing, err := keys.SigningKey(t.Context())
+		require.NoError(t, err)
+		assert.Equal(t, jwks.Thumbprint(&current.PublicKey), signing.ID)
+		assert.True(t, current.Equal(signing.Signer))
+
+		public, err := keys.PublicKeys(t.Context())
+		require.NoError(t, err)
+		require.Len(t, public, 2)
+		assert.Equal(t, jwks.Thumbprint(&current.PublicKey), public[0].ID)
+		assert.Equal(t, jwks.Thumbprint(&next.PublicKey), public[1].ID)
+		assert.True(t, next.PublicKey.Equal(public[1].PublicKey))
+	})
+
+	t.Run("publishes only the current key without a next one", func(t *testing.T) {
+		t.Parallel()
+
+		for name, nextPEM := range map[string][]byte{"nil": nil, "blank": []byte(" \n")} {
+			keys, err := lti.ParseKeysPEM(currentPEM, nextPEM)
+			require.NoError(t, err, name)
+
+			public, err := keys.PublicKeys(t.Context())
+			require.NoError(t, err, name)
+			require.Len(t, public, 1, name)
+		}
+	})
+
+	t.Run("publishes a next key that is the current one once", func(t *testing.T) {
+		t.Parallel()
+
+		keys, err := lti.ParseKeysPEM(currentPEM, currentPEM)
+		require.NoError(t, err)
+
+		public, err := keys.PublicKeys(t.Context())
+		require.NoError(t, err)
+		assert.Len(t, public, 1)
+	})
+
+	t.Run("rejects a missing or bad current key and a bad next key", func(t *testing.T) {
+		t.Parallel()
+
+		tests := map[string]struct{ current, next []byte }{
+			"no current key":     {nil, nextPEM},
+			"bad current key":    {[]byte("not a key"), nil},
+			"bad next key":       {currentPEM, []byte("not a key")},
+			"next key is public": {currentPEM, pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: []byte{1, 2, 3}})},
+		}
+
+		for name, tc := range tests {
+			_, err := lti.ParseKeysPEM(tc.current, tc.next)
+			require.Error(t, err, name)
+		}
+	})
+}
+
+func TestNewDevelopmentKeys(t *testing.T) {
+	t.Parallel()
+
+	keys, err := lti.NewDevelopmentKeys()
+	require.NoError(t, err)
+
+	signing, err := keys.SigningKey(t.Context())
+	require.NoError(t, err)
+
+	public, err := signing.PublicKey()
+	require.NoError(t, err)
+	assert.Equal(t, jwks.Thumbprint(public.PublicKey), signing.ID)
+
+	other, err := lti.NewDevelopmentKeys()
+	require.NoError(t, err)
+
+	otherSigning, err := other.SigningKey(t.Context())
+	require.NoError(t, err)
+	assert.NotEqual(t, signing.ID, otherSigning.ID, "each call generates a new key")
+}
+
+func TestParseContentItemType(t *testing.T) {
+	t.Parallel()
+
+	for _, want := range []lti.ContentItemType{
+		lti.ContentItemTypeLTIResourceLink, lti.ContentItemTypeLink, lti.ContentItemTypeFile, lti.ContentItemTypeHTML, lti.ContentItemTypeImage,
+	} {
+		got, err := lti.ParseContentItemType(string(want))
+		require.NoError(t, err)
+		assert.Equal(t, want, got)
+	}
+
+	for _, value := range []string{"", "LtiResourceLink", "link ", "video"} {
+		_, err := lti.ParseContentItemType(value)
+		require.Error(t, err, value)
+	}
+}
+
+func TestParseDocumentTarget(t *testing.T) {
+	t.Parallel()
+
+	for _, want := range []lti.DocumentTarget{lti.DocumentTargetIframe, lti.DocumentTargetWindow} {
+		got, err := lti.ParseDocumentTarget(string(want))
+		require.NoError(t, err)
+		assert.Equal(t, want, got)
+	}
+
+	for _, value := range []string{"", "Iframe", "embed", "frame"} {
+		_, err := lti.ParseDocumentTarget(value)
+		require.Error(t, err, value)
+	}
+}
+
 func TestSubstitute(t *testing.T) {
 	t.Parallel()
 

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"html"
 	"log/slog"
 	"net/http"
@@ -441,6 +442,22 @@ func TestNewHandler_Launch(t *testing.T) {
 		}
 	})
 
+	t.Run("a POSTed body over the limit gets a 413 page and never reaches Launch", func(t *testing.T) {
+		t.Parallel()
+
+		var hints []string
+
+		handler := launchHandler(t, &hints, launchingTestLaunch)
+
+		form := createTestAuthenticationForm()
+		form.Set("padding", strings.Repeat("a", maxAuthenticationFormBytes))
+
+		w := postForm(t, handler, "/lti/authorize", form)
+
+		requireErrorPage(t, w, http.StatusRequestEntityTooLarge, fmt.Sprintf("The launch could not be completed: the request is larger than %d bytes.", maxAuthenticationFormBytes))
+		assert.Empty(t, hints)
+	})
+
 	t.Run("a request without a message hint gets an error page and never reaches Launch", func(t *testing.T) {
 		t.Parallel()
 
@@ -453,9 +470,7 @@ func TestNewHandler_Launch(t *testing.T) {
 
 		w := serve(t, handler, http.MethodGet, "/lti/authorize?"+form.Encode(), "", "")
 
-		assert.Equal(t, http.StatusBadRequest, w.Code)
-		assert.Equal(t, "no-store", w.Header().Get("Cache-Control"))
-		assert.Contains(t, w.Body.String(), "The launch could not be completed: lti_message_hint is missing.")
+		requireErrorPage(t, w, http.StatusBadRequest, "The launch could not be completed: lti_message_hint is missing.")
 		assert.Empty(t, hints)
 	})
 

@@ -56,8 +56,9 @@ func NewDeepLinkingVerifier(cfg Config, keys lti.KeySource, nonces lti.NonceStor
 }
 
 // DeepLinkingSession is what the platform sent in the LtiDeepLinkingRequest. Load it from the
-// platform's own state for this browser, such as the record behind the session cookie, never from
-// the posted response: that is read before it is verified.
+// platform's own state, such as the record behind the session cookie or the request stored under
+// the data value it sent. Never build it from the posted response: that is read before it is
+// verified, so its claims can only serve as a key to find the session.
 type DeepLinkingSession struct {
 	Tool         Tool
 	DeploymentID string
