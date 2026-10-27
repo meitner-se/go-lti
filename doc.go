@@ -6,8 +6,11 @@
 // Package jwks publishes and fetches keys, safehttp fetches tool-controlled URLs safely, and
 // ltitest has test doubles.
 //
-// go-lti does no I/O except fetching a tool's keys. It has no routes, storage or cookies; the
-// caller passes plain values and implements Keys, KeySource and NonceStore. Where the spec leaves
-// a choice to the platform, such as what sub is or which roles a user has, go-lti takes the value
-// and never makes the choice.
+// go-lti does no I/O except fetching a tool's keys. It has no storage or cookies; the caller passes
+// plain values and implements Keys, KeySource and NonceStore. ParseKeysPEM and NewDevelopmentKeys
+// make Keys from a PEM key or a generated one, jwks.Fetcher is a KeySource, and MemoryNonceStore is
+// a NonceStore for a platform with a single replica. ParseContentItemType and ParseDocumentTarget
+// read the vocabulary back from strings a platform stored. Where the spec leaves a choice to the
+// platform, such as what sub is or which roles a user has, go-lti takes the value and never makes
+// the choice.
 package lti

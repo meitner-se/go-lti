@@ -171,7 +171,7 @@ func Example_deepLinking() {
 
 	http.HandleFunc("POST /lti/deep-link-return", func(w http.ResponseWriter, r *http.Request) {
 		// Load what the platform sent from its own state for this browser, such as the record behind
-		// the session cookie. Never look it up from the posted JWT: that is read before it is verified.
+		// the session cookie. Never build it from the posted JWT: that is read before it is verified.
 		session := platform.DeepLinkingSession{
 			Tool: platform.Tool{
 				ClientID: "client-1",
@@ -201,6 +201,48 @@ func Example_deepLinking() {
 
 		fmt.Fprintf(w, "added %d items", len(response.Items))
 	})
+}
+
+// NewHandler serves the Deep Linking return itself: it looks the request up by the response's
+// unverified claims, verifies the response against what the platform stored, and hands over the
+// result.
+func ExampleNewHandler_deepLinkReturn() {
+	fetcher, err := jwks.NewFetcher()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// The platform's own record of each Deep Linking request it sent, by its data value.
+	requests := map[string]platform.DeepLinkingSession{}
+
+	handler, err := platform.NewHandler(exampleConfig, platform.Handlers{
+		Register: func(context.Context, string, *platform.Registration) (platform.RegistrationGrant, error) {
+			return platform.RegistrationGrant{}, lti.NewError(lti.ErrorInvalidToken, "registration is closed", nil)
+		},
+		ToolKeys: fetcher,
+		// Only right for a single replica; see MemoryNonceStore.
+		Nonces: lti.NewMemoryNonceStore(),
+		FindDeepLinkingSession: func(_ *http.Request, unverified platform.UnverifiedDeepLinkingResponse) (platform.DeepLinkingSession, error) {
+			session, ok := requests[unverified.Data]
+			if !ok || session.Tool.ClientID != unverified.Issuer {
+				return platform.DeepLinkingSession{}, platform.ErrDeepLinkingSessionNotFound
+			}
+
+			return session, nil
+		},
+		HandleDeepLinkingResponse: func(w http.ResponseWriter, r *http.Request, result platform.DeepLinkingResult) {
+			// Mark the request answered, save result.Response.Items or record result.Err, then send
+			// the user back to where they started.
+			w.Header().Set("Cache-Control", "no-store")
+			http.Redirect(w, r, "https://lms.example.com/courses/1", http.StatusSeeOther)
+		},
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	fmt.Println(exampleConfig.Endpoints().DeepLinkReturn, handler != nil)
+	// Output: https://lms.example.com/lti/deep-link-return true
 }
 
 // exampleNonceStore keeps used nonces in memory. A real platform keeps them where every replica

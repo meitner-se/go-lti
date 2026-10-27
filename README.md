@@ -22,6 +22,8 @@ Work in progress: the API may change until v1.0.0.
 
 go-lti does no I/O except fetching a tool's keys. It has no routes, storage or cookies: you pass plain values and implement three small interfaces, `lti.Keys` (your signing key), `lti.KeySource` (tools' keys; `jwks.Fetcher` implements it) and `lti.NonceStore` (replay protection, shared by your replicas).
 
+For the simple cases there are ready-made ones: `lti.ParseKeysPEM` loads your current signing key and the next one from PEM, `lti.NewDevelopmentKeys` generates a key for local development, and `lti.MemoryNonceStore` remembers nonces in one process. `lti.ParseContentItemType` and `lti.ParseDocumentTarget` read vocabulary you stored as strings back, refusing unknown values.
+
 Where the spec leaves a choice to the platform, such as what a user's `sub` is or which roles they have, go-lti takes your value and doesn't make the choice for you.
 
 ## Quickstart
@@ -42,7 +44,7 @@ cfg := platform.Config{
 Launch a tool. The hints are opaque to go-lti: your platform decides what they are and redeems them.
 
 ```go
-keys, err := lti.StaticKeys(lti.SigningKey{Signer: privateKey}) // kid defaults to the key's thumbprint
+keys, err := lti.ParseKeysPEM(currentKeyPEM, nextKeyPEM) // nextKeyPEM may be empty; each kid is the key's thumbprint
 
 // 1. Where the user clicks: redirect the browser to the tool.
 initiation := platform.LoginInitiation{DeploymentID: deploymentID, LoginHint: userHint, MessageHint: launchHint}
@@ -77,28 +79,40 @@ A platform with its own HTTP handling can call `platform.ParseAuthenticationRequ
 
 Pass custom parameters as configured: the launch substitutes their variables (LTI 1.3 Appendix B) from the message itself, such as `$Context.id` from `Context` and `$Person.name.full` from `User`, so a custom parameter always agrees with the claim next to it. Supply variables the message doesn't carry, such as `$User.username`, in `Common.Variables`. A variable from `platform.LaunchVariables()` without a value in either place is sent as an empty string, as Appendix B asks of a supported variable; any other variable without a value stays as it is, which tells the tool the platform doesn't support it. Variables about the user are only filled in when `Sharing` allows, and are sent as an empty string when it doesn't, even when you supply them.
 
-Verify a tool's Deep Linking response:
+Receive a tool's Deep Linking response at `Paths.DeepLinkReturn` (Deep Linking 2.0 §4.2). `NewHandler` serves it when you set its four Deep Linking fields: it reads the posted JWT, calls `FindDeepLinkingSession` with the response's unverified `iss`, `aud`, `deployment_id` and `data`, verifies the response against the session you return, and hands you the outcome:
 
 ```go
 fetcher, err := jwks.NewFetcher()
-verifier, err := platform.NewDeepLinkingVerifier(cfg, fetcher, nonces)
 
-response, err := verifier.Verify(ctx, r.PostFormValue(lti.DeepLinkingResponseField), platform.DeepLinkingSession{
-	Tool:         tool,
-	DeploymentID: deploymentID,
-	Settings:     settingsYouSent,
+handler, err := platform.NewHandler(cfg, platform.Handlers{
+	Register: register,
+	ToolKeys: fetcher,
+	Nonces:   nonces,
+	FindDeepLinkingSession: func(r *http.Request, unverified platform.UnverifiedDeepLinkingResponse) (platform.DeepLinkingSession, error) {
+		// Look the request up in your own state: by unverified.Data, the browser's session in r, or
+		// both. data is optional in the spec, so don't rely on it alone.
+		return platform.DeepLinkingSession{Tool: tool, DeploymentID: deploymentID, Settings: settingsYouSent}, nil
+		// or platform.ErrDeepLinkingSessionNotFound for a request that is unknown, expired or answered
+	},
+	HandleDeepLinkingResponse: func(w http.ResponseWriter, r *http.Request, result platform.DeepLinkingResult) {
+		if rejection, ok := lti.AsError(result.Err); ok {
+			// The tool's mistake: record rejection.Description for the user.
+		} else if result.Err != nil {
+			// A jwks or nonce store failure: ask the user to try again.
+		} else {
+			// Save result.Response.Items, after any checks of your own, such as platform.OnToolDomains.
+		}
+		w.Header().Set("Cache-Control", "no-store")
+		http.Redirect(w, r, whereTheUserStarted, http.StatusSeeOther)
+	},
 })
-if rejection, ok := lti.AsError(err); ok {
-	http.Error(w, rejection.Description, rejection.StatusCode()) // the tool's mistake
-	return
-}
-if err != nil {
-	http.Error(w, "the response could not be checked", http.StatusBadGateway) // a jwks or nonce store failure
-	return
-}
 ```
 
-Load the session from your own state for this browser, such as the record behind the session cookie, never from the posted JWT. `nonces` must be shared by every replica and keep each nonce until the time `Claim` is given.
+The claims `FindDeepLinkingSession` gets are read before the signature is checked, so they only serve as a key: the session you return comes from your own state, and the response is verified against it. A response with no session gets a plain error page: 400 for `ErrDeepLinkingSessionNotFound`, a missing or oversized JWT or one without any of the lookup claims, and 500 for any other lookup error. `HandleDeepLinkingResponse` gets the session even when verification fails, so you can send the user back to where they started with the error.
+
+`nonces` must be shared by every replica and keep each nonce until the time `Claim` is given. `lti.MemoryNonceStore` only covers one process: use it with a single replica, or when your platform accepts one response per request anyway.
+
+A platform with its own HTTP handling can call `platform.ParseUnverifiedDeepLinkingResponse` and `platform.NewDeepLinkingVerifier(cfg, fetcher, nonces).Verify` itself.
 
 Handle a Dynamic Registration:
 

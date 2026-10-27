@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"slices"
 	"strings"
 
 	"github.com/meitner-se/go-lti"
@@ -53,6 +54,29 @@ type Handlers struct {
 	// gets an error page. Return the launch together with an error, such as one for a session that
 	// belongs to another user, to send the error to the launch's tool.
 	Launch func(r *http.Request, req *AuthenticationRequest) (*Launch, error)
+	// ToolKeys resolve the keys tools sign Deep Linking responses with, such as a *jwks.Fetcher.
+	// Set ToolKeys, Nonces, FindDeepLinkingSession and HandleDeepLinkingResponse together to serve
+	// the Deep Linking return.
+	ToolKeys lti.KeySource
+	// Nonces reject replayed Deep Linking responses, such as an *lti.MemoryNonceStore.
+	Nonces lti.NonceStore
+	// FindDeepLinkingSession returns the session a posted Deep Linking response answers, from the
+	// platform's own state, such as the request it stored under the data value it sent, or the
+	// record behind the browser's session cookie in r. Nothing in unverified has been checked yet,
+	// so use it only as a lookup key; data is optional in the spec, so don't rely on it alone.
+	//
+	// Return an error that is or wraps ErrDeepLinkingSessionNotFound for a request that is unknown,
+	// has expired or was already answered; the browser gets a 400 error page. Any other error, such
+	// as the platform's storage being down, gets a 500 error page.
+	FindDeepLinkingSession func(r *http.Request, unverified UnverifiedDeepLinkingResponse) (DeepLinkingSession, error)
+	// HandleDeepLinkingResponse answers the browser once a session was found: with the verified
+	// response, or with the session and Verify's error, so that the platform can record the error
+	// and still send the user back to where they started. It writes the response itself; a redirect
+	// should carry Cache-Control: no-store, as go-lti's own answers do.
+	//
+	// Verify only checks what the specs require. A platform with policies of its own, such as
+	// items only from the tool's domains (see OnToolDomains), applies them here.
+	HandleDeepLinkingResponse func(w http.ResponseWriter, r *http.Request, result DeepLinkingResult)
 	// Logger, when set, logs every error a tool or browser is answered with: a rejection at Warn
 	// with its code, any other error at Error.
 	Logger *slog.Logger
@@ -70,10 +94,15 @@ type Handlers struct {
 //     Security Framework §5.1.1.2), answered with a signed id_token. Served with Keys and Launch.
 //   - GET Paths.JWKS: the platform's public keys, to any origin, cacheable for five minutes.
 //     Served with Keys and Launch.
+//   - POST Paths.DeepLinkReturn: the Deep Linking response a tool posts back (Deep Linking 2.0
+//     §4.2), verified and handed to HandleDeepLinkingResponse. Served with ToolKeys, Nonces,
+//     FindDeepLinkingSession and HandleDeepLinkingResponse.
 //
 // Mount it to receive every request under the issuer's path, with the path unchanged. Any other
-// path is a 404 and any other method a 405. It fails when cfg can't make an OpenID configuration,
-// h has no Register, or h has only one of Keys and Launch.
+// path is a 404 and any other method a 405. An error page sent to a browser is plain text with
+// Cache-Control: no-store and a Content-Security-Policy that allows nothing. It fails when cfg
+// can't make an OpenID configuration, h has no Register, h has only one of Keys and Launch, or h
+// has only some of the Deep Linking fields.
 func NewHandler(cfg Config, h Handlers) (http.Handler, error) {
 	if h.Register == nil {
 		return nil, errors.New("lti: the handler needs a Register function")
@@ -81,6 +110,11 @@ func NewHandler(cfg Config, h Handlers) (http.Handler, error) {
 
 	if (h.Keys == nil) != (h.Launch == nil) {
 		return nil, errors.New("lti: the handler needs both Keys and Launch to serve launches, or neither")
+	}
+
+	deepLinking := []bool{h.ToolKeys != nil, h.Nonces != nil, h.FindDeepLinkingSession != nil, h.HandleDeepLinkingResponse != nil}
+	if slices.Contains(deepLinking, true) && slices.Contains(deepLinking, false) {
+		return nil, errors.New("lti: the handler needs all of ToolKeys, Nonces, FindDeepLinkingSession and HandleDeepLinkingResponse to serve the deep linking return, or none")
 	}
 
 	document, err := cfg.OpenIDConfiguration()
@@ -103,7 +137,7 @@ func NewHandler(cfg Config, h Handlers) (http.Handler, error) {
 		return nil, errors.New("lti: the issuer's path must not contain braces")
 	}
 
-	e := &endpoints{handlers: h, launcher: nil}
+	e := &endpoints{handlers: h, launcher: nil, verifier: nil}
 
 	mux := http.NewServeMux()
 	mux.Handle("GET "+issuer.Path+PathOpenIDConfiguration, openIDConfigurationHandler(discovery))
@@ -118,6 +152,15 @@ func NewHandler(cfg Config, h Handlers) (http.Handler, error) {
 		mux.HandleFunc("GET "+issuer.Path+cfg.Paths.Authorization, e.authorize)
 		mux.HandleFunc("POST "+issuer.Path+cfg.Paths.Authorization, e.authorize)
 		mux.HandleFunc("GET "+issuer.Path+cfg.Paths.JWKS, e.jwks)
+	}
+
+	if h.ToolKeys != nil {
+		e.verifier, err = NewDeepLinkingVerifier(cfg, h.ToolKeys, h.Nonces)
+		if err != nil {
+			return nil, err
+		}
+
+		mux.HandleFunc("POST "+issuer.Path+cfg.Paths.DeepLinkReturn, e.deepLinkReturn)
 	}
 
 	return mux, nil
@@ -135,6 +178,7 @@ func openIDConfigurationHandler(body []byte) http.Handler {
 type endpoints struct {
 	handlers Handlers
 	launcher *Launcher
+	verifier *DeepLinkingVerifier
 }
 
 // register answers a POSTed registration. It reads the registration token from the
@@ -267,15 +311,24 @@ func (e *endpoints) failLaunch(w http.ResponseWriter, r *http.Request, req *Auth
 		}
 	}
 
-	w.Header().Set("Cache-Control", "no-store")
+	writeErrorPage(w, err, "The launch could not be completed", "Start it again.")
+}
+
+// writeErrorPage answers a browser with a plain-text page that says what failed: with a
+// rejection's description and status, or, for any other error, with nothing more than retry and a
+// 500. It can't be cached or load anything.
+func writeErrorPage(w http.ResponseWriter, err error, what, retry string) {
+	header := w.Header()
+	header.Set("Cache-Control", "no-store")
+	header.Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'")
 
 	if rejection, ok := lti.AsError(err); ok && rejection.Code != lti.ErrorServerError {
-		http.Error(w, fmt.Sprintf("The launch could not be completed: %s.", rejection.Description), rejection.StatusCode())
+		http.Error(w, fmt.Sprintf("%s: %s.", what, rejection.Description), rejection.StatusCode())
 
 		return
 	}
 
-	http.Error(w, "The launch could not be completed. Start it again.", http.StatusInternalServerError)
+	http.Error(w, what+". "+retry, http.StatusInternalServerError)
 }
 
 // jwks serves the platform's public keys: the current signing key and, during a rotation, the next.
@@ -333,10 +386,15 @@ func authenticationForm(w http.ResponseWriter, r *http.Request) (url.Values, err
 		return r.URL.Query(), nil
 	}
 
+	return postedForm(w, r, maxAuthenticationFormBytes)
+}
+
+// postedForm reads the form in the body of a POST of at most limit bytes, ignoring the query.
+func postedForm(w http.ResponseWriter, r *http.Request, limit int64) (url.Values, error) {
 	// ParseForm also parses the query, so a malformed query would reject a valid body; parse a copy without it.
 	bodyOnly := r.Clone(r.Context())
 	bodyOnly.URL.RawQuery = ""
-	bodyOnly.Body = http.MaxBytesReader(w, r.Body, maxAuthenticationFormBytes)
+	bodyOnly.Body = http.MaxBytesReader(w, r.Body, limit)
 
 	if err := bodyOnly.ParseForm(); err != nil {
 		return nil, err

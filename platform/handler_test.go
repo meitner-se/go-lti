@@ -453,9 +453,7 @@ func TestNewHandler_Launch(t *testing.T) {
 
 		w := serve(t, handler, http.MethodGet, "/lti/authorize?"+form.Encode(), "", "")
 
-		assert.Equal(t, http.StatusBadRequest, w.Code)
-		assert.Equal(t, "no-store", w.Header().Get("Cache-Control"))
-		assert.Contains(t, w.Body.String(), "The launch could not be completed: lti_message_hint is missing.")
+		requireErrorPage(t, w, http.StatusBadRequest, "The launch could not be completed: lti_message_hint is missing.")
 		assert.Empty(t, hints)
 	})
 

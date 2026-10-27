@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto"
+	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/pem"
@@ -91,6 +92,50 @@ func ParseRSAPrivateKeyPEM(data []byte) (*rsa.PrivateKey, error) {
 	}
 
 	return key, nil
+}
+
+// developmentKeyBits is the size of the key NewDevelopmentKeys generates.
+const developmentKeyBits = 2048
+
+// ParseKeysPEM returns Keys that sign with the RSA private key in currentPEM and publish it along
+// with the key in nextPEM, which may be empty. The next key is only published, so tools already
+// have it when a rotation makes it the current key. Each key's kid is its jwks.Thumbprint, so a
+// rotation never reuses a kid. Both are parsed with ParseRSAPrivateKeyPEM.
+func ParseKeysPEM(currentPEM, nextPEM []byte) (Keys, error) {
+	if len(bytes.TrimSpace(currentPEM)) == 0 {
+		return nil, errors.New("lti: the current signing key is missing")
+	}
+
+	current, err := ParseRSAPrivateKeyPEM(currentPEM)
+	if err != nil {
+		return nil, fmt.Errorf("lti: current signing key: %w", err)
+	}
+
+	var publish []jwks.Key
+
+	if len(bytes.TrimSpace(nextPEM)) > 0 {
+		next, err := ParseRSAPrivateKeyPEM(nextPEM)
+		if err != nil {
+			return nil, fmt.Errorf("lti: next signing key: %w", err)
+		}
+
+		publish = append(publish, jwks.Key{ID: jwks.Thumbprint(&next.PublicKey), PublicKey: &next.PublicKey})
+	}
+
+	return StaticKeys(SigningKey{Signer: current}, publish...)
+}
+
+// NewDevelopmentKeys returns Keys that sign with a 2048-bit RSA key generated for this process.
+// They are for local development only, not for production: every restart and every replica
+// publishes a different key, so tools reject id_tokens signed before a restart or by another
+// replica.
+func NewDevelopmentKeys() (Keys, error) {
+	key, err := rsa.GenerateKey(rand.Reader, developmentKeyBits)
+	if err != nil {
+		return nil, fmt.Errorf("lti: cannot generate a development key: %w", err)
+	}
+
+	return StaticKeys(SigningKey{Signer: key})
 }
 
 // Keys supplies the key to sign with and the public keys to publish. An implementation may re-read
