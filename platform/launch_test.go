@@ -529,6 +529,7 @@ func TestLauncher_IDTokenClaims_Rejects(t *testing.T) {
 		{name: "an http target_link_uri", msg: func(m *lti.ResourceLinkRequest) { m.TargetLinkURI = "http://tool.example.com/launch" }},
 		{name: "no target_link_uri anywhere", tool: func(tool *Tool) { tool.TargetLinkURI = "" }, msg: func(m *lti.ResourceLinkRequest) { m.TargetLinkURI = "" }},
 		{name: "an unknown document target", msg: func(m *lti.ResourceLinkRequest) { m.Presentation.DocumentTarget = "popup" }},
+		{name: "a deep linking document target", msg: func(m *lti.ResourceLinkRequest) { m.Presentation.DocumentTarget = lti.DocumentTargetEmbed }},
 		{name: "a context without id", msg: func(m *lti.ResourceLinkRequest) { m.Context = &lti.LaunchContext{} }},
 		{name: "a resource link without id", msg: func(m *lti.ResourceLinkRequest) { m.ResourceLink = lti.ResourceLink{Title: "Quiz"} }},
 		{name: "a resource link id over 255 characters", msg: func(m *lti.ResourceLinkRequest) { m.ResourceLink.ID = strings.Repeat("a", 256) }},
@@ -569,6 +570,10 @@ func TestLauncher_IDTokenClaims_RejectsIncompleteDeepLinking(t *testing.T) {
 	}{
 		{name: "an http return url", settings: func(s *lti.DeepLinkingSettings) { s.ReturnURL = "http://platform.example.com/lti/deep-link-return" }},
 		{name: "no accepted types", settings: func(s *lti.DeepLinkingSettings) { s.AcceptTypes = nil }},
+		{name: "a launch document target", settings: func(s *lti.DeepLinkingSettings) {
+			s.AcceptPresentationDocumentTargets = []lti.DocumentTarget{lti.DocumentTargetIframe, lti.DocumentTargetFrame}
+		}},
+		{name: "an unknown document target", settings: func(s *lti.DeepLinkingSettings) { s.AcceptPresentationDocumentTargets = []lti.DocumentTarget{"popup"} }},
 	}
 
 	for _, tt := range tests {
@@ -747,6 +752,40 @@ func TestRegression_EmptyDocumentTargetsAreSentAsAnEmptyArray(t *testing.T) {
 	settings, err := json.Marshal(claims[lti.ClaimDeepLinkingSettings])
 	require.NoError(t, err)
 	assert.Contains(t, string(settings), `"accept_presentation_document_targets":[]`)
+}
+
+func TestRegression_DocumentTargetsFollowTheirSpec(t *testing.T) {
+	t.Parallel()
+
+	launcher := createTestLauncher(t, ltitest.NewSigningKey(t))
+
+	// LTI 1.3 §5.4.4: a launch's document_target may be frame.
+	link := createTestResourceLinkRequest()
+	link.Presentation.DocumentTarget = lti.DocumentTargetFrame
+
+	claims, err := launcher.idTokenClaims(createTestTool(), "nonce-1", link, testNow)
+	require.NoError(t, err)
+
+	presentation, err := json.Marshal(claims[lti.ClaimLaunchPresentation])
+	require.NoError(t, err)
+	assert.Contains(t, string(presentation), `"document_target":"frame"`)
+
+	// Deep Linking 2.0 §4.4.1: the platform may accept embed.
+	deepLinking := createTestDeepLinkingRequest()
+	deepLinking.Settings.AcceptPresentationDocumentTargets = []lti.DocumentTarget{lti.DocumentTargetEmbed, lti.DocumentTargetIframe, lti.DocumentTargetWindow}
+
+	claims, err = launcher.idTokenClaims(createTestTool(), "nonce-1", deepLinking, testNow)
+	require.NoError(t, err)
+
+	settings, err := json.Marshal(claims[lti.ClaimDeepLinkingSettings])
+	require.NoError(t, err)
+	assert.Contains(t, string(settings), `"accept_presentation_document_targets":["embed","iframe","window"]`)
+
+	// A deep linking request is a launch too, so its own presentation can't be embed.
+	deepLinking.Presentation.DocumentTarget = lti.DocumentTargetEmbed
+
+	_, err = launcher.idTokenClaims(createTestTool(), "nonce-1", deepLinking, testNow)
+	require.Error(t, err)
 }
 
 func TestRegression_ReturnURLMustBeHTTPS(t *testing.T) {

@@ -303,11 +303,12 @@ func validateCommon(c lti.Common, targetLinkURI string) error {
 		return errors.New("lti: launch presentation return_url must be an absolute https url")
 	}
 
+	// LTI 1.3 §5.4.4: embed is a Deep Linking target, not a launch's.
 	switch c.Presentation.DocumentTarget {
-	case "", lti.DocumentTargetIframe, lti.DocumentTargetWindow:
+	case "", lti.DocumentTargetFrame, lti.DocumentTargetIframe, lti.DocumentTargetWindow:
 		return nil
 	default:
-		return errors.New("lti: launch document_target must be iframe or window")
+		return errors.New("lti: launch document_target must be frame, iframe or window")
 	}
 }
 
@@ -364,6 +365,15 @@ func deepLinkingSettingsClaim(s lti.DeepLinkingSettings, defaultReturnURL string
 	targets := s.AcceptPresentationDocumentTargets
 	if targets == nil {
 		targets = []lti.DocumentTarget{}
+	}
+
+	// §4.4.1 and §4.6.2: embed, iframe or window; Deep Linking 1.0's frame maps to window.
+	for _, target := range targets {
+		switch target {
+		case lti.DocumentTargetEmbed, lti.DocumentTargetIframe, lti.DocumentTargetWindow:
+		default:
+			return deepLinkingSettings{}, errors.New("lti: deep linking document targets must be embed, iframe or window")
+		}
 	}
 
 	return deepLinkingSettings{

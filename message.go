@@ -120,6 +120,7 @@ type ResourceLink struct {
 //
 //nolint:tagliatelle // LTI 1.3 §5.4.4 defines snake_case keys
 type Presentation struct {
+	// DocumentTarget is frame, iframe or window.
 	DocumentTarget DocumentTarget `json:"document_target,omitempty"`
 	Width          int            `json:"width,omitempty"`
 	Height         int            `json:"height,omitempty"`
@@ -152,7 +153,8 @@ type DeepLinkingSettings struct {
 	ReturnURL string
 	// AcceptTypes are the content item types the platform can place.
 	AcceptTypes []ContentItemType
-	// AcceptPresentationDocumentTargets are the document targets the platform can show items in.
+	// AcceptPresentationDocumentTargets are the document targets the platform can show items in:
+	// embed, iframe or window.
 	AcceptPresentationDocumentTargets []DocumentTarget
 	// AcceptMediaTypes are MIME types for file items, such as "image/*".
 	AcceptMediaTypes []string
