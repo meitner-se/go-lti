@@ -19,7 +19,7 @@ jobs:
         go: ["1.26.x", "stable"]
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         with:
           go-version: ${{ matrix.go }}
       - run: go test -race ./...
@@ -29,7 +29,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         with:
           go-version: stable
       - uses: golangci/golangci-lint-action@v9
@@ -44,7 +44,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         with:
           go-version: stable
       - run: go run golang.org/x/vuln/cmd/govulncheck@v1.8.0 ./...
@@ -64,7 +64,7 @@ jobs:
           - { package: ./internal/urlcheck, target: FuzzOnDomains }
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         with:
           go-version: stable
       - run: go test ${{ matrix.package }} -run='^$' -fuzz='^${{ matrix.target }}$' -fuzztime=60s
