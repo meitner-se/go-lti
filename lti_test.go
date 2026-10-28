@@ -255,13 +255,13 @@ func TestParseContentItemType(t *testing.T) {
 func TestParseDocumentTarget(t *testing.T) {
 	t.Parallel()
 
-	for _, want := range []lti.DocumentTarget{lti.DocumentTargetIframe, lti.DocumentTargetWindow} {
+	for _, want := range []lti.DocumentTarget{lti.DocumentTargetEmbed, lti.DocumentTargetFrame, lti.DocumentTargetIframe, lti.DocumentTargetWindow} {
 		got, err := lti.ParseDocumentTarget(string(want))
 		require.NoError(t, err)
 		assert.Equal(t, want, got)
 	}
 
-	for _, value := range []string{"", "Iframe", "embed", "frame"} {
+	for _, value := range []string{"", "Iframe", "embed ", "popup", "overlay", "none"} {
 		_, err := lti.ParseDocumentTarget(value)
 		require.Error(t, err, value)
 	}

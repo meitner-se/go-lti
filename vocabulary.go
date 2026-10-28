@@ -75,11 +75,18 @@ const (
 	ContextTypeGroup          ContextType = "http://purl.imsglobal.org/vocab/lis/v2/course#Group"
 )
 
-// DocumentTarget says how the platform shows the tool (LTI 1.3 §5.4.4).
+// DocumentTarget says how the platform shows the tool or a content item. The two specs that use it
+// allow different values: a launch's document_target is frame, iframe or window (LTI 1.3 §5.4.4),
+// and Deep Linking's accept_presentation_document_targets are embed, iframe or window (LTI Deep
+// Linking 2.0 §4.4.1, §4.6.2).
 type DocumentTarget string
 
 // Document targets.
 const (
+	// DocumentTargetEmbed is for Deep Linking settings only.
+	DocumentTargetEmbed DocumentTarget = "embed"
+	// DocumentTargetFrame is for a launch's presentation only.
+	DocumentTargetFrame  DocumentTarget = "frame"
 	DocumentTargetIframe DocumentTarget = "iframe"
 	DocumentTargetWindow DocumentTarget = "window"
 )
@@ -96,10 +103,11 @@ const (
 	ContentItemTypeImage           ContentItemType = "image"
 )
 
-// ParseDocumentTarget returns the DocumentTarget s names, or an error when it is none of them.
+// ParseDocumentTarget returns the DocumentTarget s names, or an error when it is none of them. It
+// accepts the values of both specs; a launch refuses embed and Deep Linking settings refuse frame.
 func ParseDocumentTarget(s string) (DocumentTarget, error) {
 	switch target := DocumentTarget(s); target {
-	case DocumentTargetIframe, DocumentTargetWindow:
+	case DocumentTargetEmbed, DocumentTargetFrame, DocumentTargetIframe, DocumentTargetWindow:
 		return target, nil
 	default:
 		return "", fmt.Errorf("lti: unknown document target %q", s)
