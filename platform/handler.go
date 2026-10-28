@@ -185,10 +185,12 @@ type endpoints struct {
 
 // register answers a POSTed registration. It reads the registration token from the
 // Authorization header's Bearer scheme, refuses a body over MaxRegistrationBytes, checks the body
-// with ParseRegistration and hands it to Register. A saved registration is answered 201
-// Created (OpenID Connect Registration §3.2) with Response(grant); a rejection with RFC 7591
-// §3.2.2's error response, plus a Bearer challenge for invalid_token (RFC 6750 §3). Every answer
-// has Cache-Control: no-store.
+// with ParseRegistration and hands it to Register. A saved registration is answered 200 OK
+// with Response(grant); a rejection with RFC 7591 §3.2.2's error response, plus a Bearer
+// challenge for invalid_token (RFC 6750 §3). Every answer has Cache-Control: no-store.
+//
+// OpenID Connect Registration §3.2 says a success SHOULD be 201 Created, so 200 is allowed. Moodle
+// and Canvas answer 200, and some tools treat any other status as a failed registration.
 func (e *endpoints) register(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 
@@ -228,7 +230,7 @@ func (e *endpoints) register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusCreated, encoded)
+	writeJSON(w, http.StatusOK, encoded)
 }
 
 // registrationError is RFC 7591 §3.2.2's error response.
