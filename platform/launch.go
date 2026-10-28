@@ -367,7 +367,7 @@ func deepLinkingSettingsClaim(s lti.DeepLinkingSettings, defaultReturnURL string
 		targets = []lti.DocumentTarget{}
 	}
 
-	// §4.4.1 and §4.6.2: embed, iframe or window; Deep Linking 1.0's frame maps to window.
+	// §4.4.1 and §4.6.2: embed, iframe or window. frame is only a launch's document_target.
 	for _, target := range targets {
 		switch target {
 		case lti.DocumentTargetEmbed, lti.DocumentTargetIframe, lti.DocumentTargetWindow:
