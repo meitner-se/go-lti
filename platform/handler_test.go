@@ -136,7 +136,7 @@ func TestNewHandler(t *testing.T) {
 		require.NoError(t, err)
 
 		body := string(encodeRegistration(t, createTestRegistrationJSON()))
-		assert.Equal(t, http.StatusCreated, serve(t, customHandler, http.MethodPost, "/lti/dynamic-registration", "Bearer token-1", body).Code)
+		assert.Equal(t, http.StatusOK, serve(t, customHandler, http.MethodPost, "/lti/dynamic-registration", "Bearer token-1", body).Code)
 		assert.Equal(t, http.StatusNotFound, serve(t, customHandler, http.MethodPost, "/lti/register", "Bearer token-1", body).Code)
 		assert.Equal(t, []string{"token-1"}, tokens)
 	})
@@ -174,7 +174,7 @@ func TestNewHandler(t *testing.T) {
 func TestNewHandler_Registration(t *testing.T) {
 	t.Parallel()
 
-	t.Run("a registration is answered 201 with what was granted", func(t *testing.T) {
+	t.Run("a registration is answered 200 with what was granted", func(t *testing.T) {
 		t.Parallel()
 
 		var tokens []string
@@ -183,7 +183,7 @@ func TestNewHandler_Registration(t *testing.T) {
 
 		w := postRegistration(t, handler, "bearer token-1", string(encodeRegistration(t, createTestRegistrationJSON())))
 
-		require.Equal(t, http.StatusCreated, w.Code, w.Body.String())
+		require.Equal(t, http.StatusOK, w.Code, w.Body.String())
 		assert.Equal(t, "no-store", w.Header().Get("Cache-Control"))
 		assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
 		assert.Equal(t, []string{"token-1"}, tokens)
@@ -275,7 +275,7 @@ func TestNewHandler_Registration(t *testing.T) {
 		assert.Equal(t, `Bearer error="invalid_token"`, w.Header().Get("WWW-Authenticate"))
 		assert.Empty(t, tokens)
 
-		assert.Equal(t, http.StatusCreated, postRegistration(t, handler, "Bearer token-1", body).Code)
+		assert.Equal(t, http.StatusOK, postRegistration(t, handler, "Bearer token-1", body).Code)
 		assert.Equal(t, []string{"token-1"}, tokens)
 	})
 
