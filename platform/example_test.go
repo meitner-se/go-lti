@@ -270,7 +270,8 @@ func ExampleAddMembershipLinks() {
 			Members: []lti.Member{{Status: lti.MembershipStatusActive, UserID: "user-1", Roles: []lti.Role{lti.RoleLearner}}},
 		}
 
-		if err := platform.AddMembershipLinks(w.Header(), "https://lms.example.com/lti/contexts/course-1/memberships?limit=1&page=2", ""); err != nil {
+		links := platform.MembershipLinks{Next: "https://lms.example.com/lti/contexts/course-1/memberships?limit=1&page=2"}
+		if err := platform.AddMembershipLinks(w.Header(), links); err != nil {
 			http.Error(w, "internal error", http.StatusInternalServerError)
 
 			return

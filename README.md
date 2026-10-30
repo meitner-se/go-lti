@@ -149,7 +149,8 @@ The claim belongs to the launch's context, so a launch with a `ContextMembership
 go-lti has no memberships endpoint, since that needs your access tokens and your data. Your endpoint answers with an `lti.MembershipContainer` as `lti.MembershipContainerMediaType`, and `platform.AddMembershipLinks` links the next page (`rel="next"`) and, if you offer one, the changes since (`rel="differences"`):
 
 ```go
-if err := platform.AddMembershipLinks(w.Header(), nextPageURL, ""); err != nil { // "" on the last page
+// Next is empty on the last page; Differences is empty unless you offer one.
+if err := platform.AddMembershipLinks(w.Header(), platform.MembershipLinks{Next: nextPageURL}); err != nil {
 	return err
 }
 
