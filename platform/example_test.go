@@ -284,7 +284,7 @@ func ExampleAddMembershipLinks() {
 	}
 
 	w := httptest.NewRecorder()
-	membershipsHandler(w, httptest.NewRequest(http.MethodGet, "https://lms.example.com/lti/contexts/course-1/memberships?limit=1", http.NoBody))
+	membershipsHandler(w, httptest.NewRequestWithContext(context.Background(), http.MethodGet, "https://lms.example.com/lti/contexts/course-1/memberships?limit=1", http.NoBody))
 
 	fmt.Println(w.Header().Get("Content-Type"))
 	fmt.Println(w.Header().Get("Link"))
