@@ -1,0 +1,11 @@
+{
+  "description": "A Deep Linking request in a context may carry the namesroleservice claim too.",
+  "message_type": "LtiDeepLinkingRequest",
+  "context": {"id": "course-1", "title": "Biology 1"},
+  "context_memberships_url": "https://platform.example.com/lti/contexts/course-1/memberships",
+  "valid": true,
+  "expect_claim": {
+    "context_memberships_url": "https://platform.example.com/lti/contexts/course-1/memberships",
+    "service_versions": ["2.0"]
+  }
+}

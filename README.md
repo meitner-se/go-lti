@@ -2,7 +2,7 @@
 
 LTI 1.3 and LTI Advantage for Go, for the platform side: the system that launches tools, such as an LMS.
 
-It covers the launch (the OIDC third-party login flow and the signed id_token), verifying Deep Linking 2.0 responses, Dynamic Registration 1.0, and the platform's OpenID configuration and JWKS. LTI 1.1 is not supported.
+It covers the launch (the OIDC third-party login flow and the signed id_token), verifying Deep Linking 2.0 responses, Dynamic Registration 1.0, the platform's OpenID configuration and JWKS, and the launch claim and membership container of Names and Role Provisioning Services 2.0. LTI 1.1 is not supported.
 
 ```sh
 go get github.com/meitner-se/go-lti
@@ -14,8 +14,8 @@ Work in progress: the API may change until v1.0.0.
 
 | Package | What it does |
 | -- | -- |
-| `lti` | Types both sides of LTI share: messages and claims, content items, roles, scopes and other spec vocabulary, signing keys, and `Error`. |
-| `platform` | The platform side: its `Config`, its record of each `Tool`, the launch flow, Deep Linking verification, Dynamic Registration and the OpenID configuration. |
+| `lti` | Types both sides of LTI share: messages and claims, content items, membership containers, roles, scopes and other spec vocabulary, signing keys, and `Error`. |
+| `platform` | The platform side: its `Config`, its record of each `Tool`, the launch flow, Deep Linking verification, Dynamic Registration, the OpenID configuration and the membership service's `Link` headers. |
 | `jwks` | Publishes the platform's keys and fetches tools' keys, with caching. |
 | `safehttp` | An HTTP client that won't connect to private or internal addresses, for URLs a tool controls. |
 | `ltitest` | Test keys, a JWKS server and an in-memory nonce store. |
@@ -132,13 +132,44 @@ tool := reg.Tool(clientID)
 
 The platform's endpoints are the issuer plus `cfg.Paths`, listed by `cfg.Endpoints()`. Only the OpenID configuration's path is set by a spec (`platform.PathOpenIDConfiguration`); you choose the others, and tools learn them from the OpenID configuration, the registration response or a launch. Once a tool has registered it keeps the URLs it was given, so don't change a path after that. The package examples on [pkg.go.dev](https://pkg.go.dev/github.com/meitner-se/go-lti) run as tests.
 
+## Names and Role Provisioning Services
+
+Names and Role Provisioning Services 2.0 lets a tool read who is in a context, such as a course's teachers and students. Send the tool the URL where it reads them with the launch, and the launch carries the `namesroleservice` claim with service version 2.0:
+
+```go
+Common: lti.Common{
+	// ...
+	Context:               &lti.LaunchContext{ID: contextID},
+	ContextMembershipsURL: "https://lms.example.com/lti/contexts/" + url.PathEscape(contextID) + "/memberships",
+},
+```
+
+The claim belongs to the launch's context, so a launch with a `ContextMembershipsURL` needs a `Context`. Without the URL there is no claim. Send it only to a tool your platform lets read the context's members, such as one granted the `lti.ScopeNRPSMembershipRead` scope.
+
+go-lti has no memberships endpoint, since that needs your access tokens and your data. Your endpoint answers with an `lti.MembershipContainer` as `lti.MembershipContainerMediaType`, and `platform.AddMembershipLinks` links the next page (`rel="next"`) and, if you offer one, the changes since (`rel="differences"`):
+
+```go
+if err := platform.AddMembershipLinks(w.Header(), nextPageURL, ""); err != nil { // "" on the last page
+	return err
+}
+
+w.Header().Set("Content-Type", lti.MembershipContainerMediaType)
+err := json.NewEncoder(w).Encode(lti.MembershipContainer{
+	ID:      pageURL, // the absolute URL this page was read from
+	Context: lti.MembershipContext{ID: contextID},
+	Members: []lti.Member{{Status: lti.MembershipStatusActive, UserID: sub, Roles: []lti.Role{lti.RoleLearner}}},
+})
+```
+
+A member's `UserID` is the `sub` the same tool gets in launches. Fill in the name, email and other personal data only when the tool may have it, as `Sharing` decides in a launch; empty fields are left out.
+
 ## Errors
 
 A rejection of something a tool or a browser sent is an `*lti.Error` with the spec's error code (such as `invalid_request` or `invalid_redirect_uri`) and a description that is safe to send back. Any other error is your platform's own, such as a signer or network failure.
 
 ## Test vectors
 
-`testdata/vectors/` holds JSON cases with their expected results, for JWKS documents, Dynamic Registration requests and Deep Linking responses. go-lti's tests run them, and an implementation in another language can run the same cases. See [testdata/vectors/README.md](testdata/vectors/README.md).
+`testdata/vectors/` holds JSON cases with their expected results, for JWKS documents, Dynamic Registration requests, Deep Linking responses, custom parameter substitution and the Names and Role Provisioning Services launch claim. go-lti's tests run them, and an implementation in another language can run the same cases. See [testdata/vectors/README.md](testdata/vectors/README.md).
 
 ## Security
 

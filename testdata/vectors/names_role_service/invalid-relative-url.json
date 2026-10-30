@@ -1,0 +1,7 @@
+{
+  "description": "The memberships URL is fully resolved (NRPS 2.0 §3.6.1.1), not relative to the platform.",
+  "message_type": "LtiResourceLinkRequest",
+  "context": {"id": "course-1"},
+  "context_memberships_url": "/lti/contexts/course-1/memberships",
+  "valid": false
+}

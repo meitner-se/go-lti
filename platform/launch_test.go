@@ -231,6 +231,35 @@ func TestLauncher_IDTokenClaims_AnonymousLaunchHasEmptyRoles(t *testing.T) {
 	assert.Contains(t, claimsJSON(t, claims), `"https://purl.imsglobal.org/spec/lti/claim/roles":[]`)
 }
 
+func TestLauncher_IDTokenClaims_NamesRoleService(t *testing.T) {
+	t.Parallel()
+
+	launcher := createTestLauncher(t, ltitest.NewSigningKey(t))
+	membershipsURL := "https://platform.example.com/lti/contexts/course-1/memberships"
+	claim := `"https://purl.imsglobal.org/spec/lti-nrps/claim/namesroleservice":{"context_memberships_url":"https://platform.example.com/lti/contexts/course-1/memberships","service_versions":["2.0"]}`
+
+	link := createTestResourceLinkRequest()
+	link.ContextMembershipsURL = membershipsURL
+
+	claims, err := launcher.idTokenClaims(createTestTool(), "nonce-1", link, testNow)
+	require.NoError(t, err)
+	assert.Contains(t, claimsJSON(t, claims), claim)
+
+	deepLinking := createTestDeepLinkingRequest()
+	deepLinking.ContextMembershipsURL = membershipsURL
+
+	claims, err = launcher.idTokenClaims(createTestTool(), "nonce-1", deepLinking, testNow)
+	require.NoError(t, err)
+	assert.Contains(t, claimsJSON(t, claims), claim)
+
+	// Without a URL there is no claim, with or without a context.
+	for _, msg := range []*lti.ResourceLinkRequest{createTestResourceLinkRequest(), {Common: lti.Common{DeploymentID: "deployment-1", Subject: "user-1"}, ResourceLink: lti.ResourceLink{ID: "link-1"}}} {
+		claims, err = launcher.idTokenClaims(createTestTool(), "nonce-1", msg, testNow)
+		require.NoError(t, err)
+		assert.NotContains(t, claims, lti.ClaimNamesRoleService)
+	}
+}
+
 func TestLauncher_IDTokenClaims_SharesPersonalDataOnlyWhenAllowed(t *testing.T) {
 	t.Parallel()
 
@@ -531,6 +560,14 @@ func TestLauncher_IDTokenClaims_Rejects(t *testing.T) {
 		{name: "an unknown document target", msg: func(m *lti.ResourceLinkRequest) { m.Presentation.DocumentTarget = "popup" }},
 		{name: "a deep linking document target", msg: func(m *lti.ResourceLinkRequest) { m.Presentation.DocumentTarget = lti.DocumentTargetEmbed }},
 		{name: "a context without id", msg: func(m *lti.ResourceLinkRequest) { m.Context = &lti.LaunchContext{} }},
+		{name: "a context_memberships_url without a context", msg: func(m *lti.ResourceLinkRequest) {
+			m.Context = nil
+			m.ContextMembershipsURL = "https://platform.example.com/lti/memberships"
+		}},
+		{name: "an http context_memberships_url", msg: func(m *lti.ResourceLinkRequest) {
+			m.ContextMembershipsURL = "http://platform.example.com/lti/memberships"
+		}},
+		{name: "a relative context_memberships_url", msg: func(m *lti.ResourceLinkRequest) { m.ContextMembershipsURL = "/lti/memberships" }},
 		{name: "a resource link without id", msg: func(m *lti.ResourceLinkRequest) { m.ResourceLink = lti.ResourceLink{Title: "Quiz"} }},
 		{name: "a resource link id over 255 characters", msg: func(m *lti.ResourceLinkRequest) { m.ResourceLink.ID = strings.Repeat("a", 256) }},
 	}
@@ -687,7 +724,7 @@ func TestRegression_ExtensionsCantSetReservedClaimsTheMessageLeavesOut(t *testin
 
 	launcher := createTestLauncher(t, ltitest.NewSigningKey(t))
 
-	for _, name := range []string{lti.ClaimContext, lti.ClaimCustom, lti.ClaimLaunchPresentation, lti.ClaimDeepLinkingSettings} {
+	for _, name := range []string{lti.ClaimContext, lti.ClaimCustom, lti.ClaimLaunchPresentation, lti.ClaimDeepLinkingSettings, lti.ClaimNamesRoleService} {
 		msg := createTestResourceLinkRequest()
 		msg.Context = nil
 		msg.Custom = nil

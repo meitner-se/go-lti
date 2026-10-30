@@ -1,8 +1,12 @@
 // Package lti holds the types that both sides of LTI 1.3 share: messages and their claims, content
 // items, the spec's vocabulary, signing keys and errors.
 //
+// MembershipContainer and Member are what a platform answers a Names and Role Provisioning
+// Services 2.0 request with; Common.ContextMembershipsURL sends a tool the URL to ask at.
+//
 // The platform side (its configuration, its record of each tool, launches, Deep Linking
-// verification, Dynamic Registration and the OpenID configuration) lives in package platform.
+// verification, Dynamic Registration, the OpenID configuration and the membership service's Link
+// headers) lives in package platform.
 // Package jwks publishes and fetches keys, safehttp fetches tool-controlled URLs safely, and
 // ltitest has test doubles.
 //
