@@ -75,6 +75,18 @@ const (
 	ContextTypeGroup          ContextType = "http://purl.imsglobal.org/vocab/lis/v2/course#Group"
 )
 
+// MembershipStatus is a member's status in a membership container (Names and Role Provisioning
+// Services 2.0 §2.3).
+type MembershipStatus string
+
+// Membership statuses.
+const (
+	MembershipStatusActive   MembershipStatus = "Active"
+	MembershipStatusInactive MembershipStatus = "Inactive"
+	// MembershipStatusDeleted is for an answer to a differences link only.
+	MembershipStatusDeleted MembershipStatus = "Deleted"
+)
+
 // DocumentTarget says how the platform shows the tool or a content item. The two specs that use it
 // allow different values: a launch's document_target is frame, iframe or window (LTI 1.3 §5.4.4),
 // and Deep Linking's accept_presentation_document_targets are embed, iframe or window (LTI Deep

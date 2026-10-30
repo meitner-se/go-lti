@@ -1,0 +1,6 @@
+{
+  "description": "A launch without a context or a memberships URL has no namesroleservice claim.",
+  "message_type": "LtiResourceLinkRequest",
+  "valid": true,
+  "expect_claim": null
+}

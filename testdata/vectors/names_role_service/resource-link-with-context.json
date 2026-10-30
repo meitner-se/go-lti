@@ -1,0 +1,11 @@
+{
+  "description": "A resource link launch in a context, with a memberships URL, carries the namesroleservice claim with service version 2.0 (NRPS 2.0 §3.6.1.1).",
+  "message_type": "LtiResourceLinkRequest",
+  "context": {"id": "course-1"},
+  "context_memberships_url": "https://platform.example.com/lti/contexts/course-1/memberships",
+  "valid": true,
+  "expect_claim": {
+    "context_memberships_url": "https://platform.example.com/lti/contexts/course-1/memberships",
+    "service_versions": ["2.0"]
+  }
+}

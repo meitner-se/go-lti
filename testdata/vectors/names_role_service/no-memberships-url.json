@@ -1,0 +1,7 @@
+{
+  "description": "Without a memberships URL a launch has no namesroleservice claim, even in a context.",
+  "message_type": "LtiResourceLinkRequest",
+  "context": {"id": "course-1"},
+  "valid": true,
+  "expect_claim": null
+}

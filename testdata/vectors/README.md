@@ -50,6 +50,16 @@ A valid case has the number of `items` returned. An invalid case has the `error_
 substring of its `error_description`. Every item URL must be https (LTI 1.3 §3.5); items needn't
 be on the tool's domains.
 
+## `names_role_service/`
+
+A launch message and the Names and Role Provisioning Services URL it is sent with. `message_type`
+is `LtiResourceLinkRequest` or `LtiDeepLinkingRequest`, `context` is the launch's context claim, if
+any, and `context_memberships_url` is the URL the platform sets, if any. A valid case has
+`expect_claim`: the `https://purl.imsglobal.org/spec/lti-nrps/claim/namesroleservice` claim the
+launch sends, or `null` when it sends none. An invalid case must be refused: the URL belongs to the
+launch's context (NRPS 2.0 §3.6.1.1), so a launch without a context can't have one, and it must be
+an absolute https URL.
+
 ## `substitution/`
 
 A launch message and the `custom` parameters it is sent with, as configured. `message_type` is

@@ -6,7 +6,8 @@ import (
 	"math"
 )
 
-// Claim names from LTI 1.3 §5 and LTI Deep Linking 2.0 §4.
+// Claim names from LTI 1.3 §5, LTI Deep Linking 2.0 §4 and Names and Role Provisioning Services 2.0
+// §3.6.1.1.
 const (
 	ClaimMessageType         = "https://purl.imsglobal.org/spec/lti/claim/message_type"
 	ClaimVersion             = "https://purl.imsglobal.org/spec/lti/claim/version"
@@ -25,6 +26,7 @@ const (
 	ClaimDeepLinkingLog      = "https://purl.imsglobal.org/spec/lti-dl/claim/log"
 	ClaimDeepLinkingErrorMsg = "https://purl.imsglobal.org/spec/lti-dl/claim/errormsg"
 	ClaimDeepLinkingErrorLog = "https://purl.imsglobal.org/spec/lti-dl/claim/errorlog"
+	ClaimNamesRoleService    = "https://purl.imsglobal.org/spec/lti-nrps/claim/namesroleservice"
 )
 
 // Message is a message the platform launches a tool with: *ResourceLinkRequest or
@@ -74,6 +76,11 @@ type Common struct {
 	Roles []Role
 	// Context is the course or group the launch happens in, if any.
 	Context *LaunchContext
+	// ContextMembershipsURL is where the tool reads Context's members with Names and Role
+	// Provisioning Services 2.0, an absolute https URL for that context. When set, the launch sends
+	// the namesroleservice claim (NRPS 2.0 §3.6.1.1), so it needs Context. Set it only for a tool
+	// the platform lets read the members.
+	ContextMembershipsURL string
 	// Presentation is how the platform shows the tool.
 	Presentation Presentation
 	// Custom are the custom parameters of the link or tool, as configured. The launch substitutes

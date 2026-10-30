@@ -4,9 +4,11 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/rsa"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
+	"net/http/httptest"
 	"net/url"
 	"sync"
 	"time"
@@ -243,6 +245,56 @@ func ExampleNewHandler_deepLinkReturn() {
 
 	fmt.Println(exampleConfig.Endpoints().DeepLinkReturn, handler != nil)
 	// Output: https://lms.example.com/lti/deep-link-return true
+}
+
+// A tool launched with a context_memberships_url reads the context's members there with its access
+// token (Names and Role Provisioning Services 2.0). The platform answers with a page of members,
+// and links the next page while there is one.
+func ExampleAddMembershipLinks() {
+	// The launch tells the tool where the context's members are.
+	_ = &lti.ResourceLinkRequest{
+		Common: lti.Common{
+			DeploymentID:          "deployment-1",
+			Subject:               "user-1",
+			Context:               &lti.LaunchContext{ID: "course-1"},
+			ContextMembershipsURL: "https://lms.example.com/lti/contexts/course-1/memberships",
+		},
+		ResourceLink: lti.ResourceLink{ID: "link-1"},
+	}
+
+	// The memberships endpoint, after checking the tool's access token and the context.
+	membershipsHandler := func(w http.ResponseWriter, _ *http.Request) {
+		page := lti.MembershipContainer{
+			ID:      "https://lms.example.com/lti/contexts/course-1/memberships?limit=1",
+			Context: lti.MembershipContext{ID: "course-1"},
+			Members: []lti.Member{{Status: lti.MembershipStatusActive, UserID: "user-1", Roles: []lti.Role{lti.RoleLearner}}},
+		}
+
+		links := platform.MembershipLinks{Next: "https://lms.example.com/lti/contexts/course-1/memberships?limit=1&page=2"}
+		if err := platform.AddMembershipLinks(w.Header(), links); err != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+
+			return
+		}
+
+		w.Header().Set("Content-Type", lti.MembershipContainerMediaType)
+
+		if err := json.NewEncoder(w).Encode(page); err != nil {
+			log.Print(err)
+		}
+	}
+
+	w := httptest.NewRecorder()
+	membershipsHandler(w, httptest.NewRequestWithContext(context.Background(), http.MethodGet, "https://lms.example.com/lti/contexts/course-1/memberships?limit=1", http.NoBody))
+
+	fmt.Println(w.Header().Get("Content-Type"))
+	fmt.Println(w.Header().Get("Link"))
+	fmt.Print(w.Body.String())
+
+	// Output:
+	// application/vnd.ims.lti-nrps.v2.membershipcontainer+json
+	// <https://lms.example.com/lti/contexts/course-1/memberships?limit=1&page=2>; rel="next"
+	// {"id":"https://lms.example.com/lti/contexts/course-1/memberships?limit=1","context":{"id":"course-1"},"members":[{"status":"Active","user_id":"user-1","roles":["http://purl.imsglobal.org/vocab/lis/v2/membership#Learner"]}]}
 }
 
 // exampleNonceStore keeps used nonces in memory. A real platform keeps them where every replica

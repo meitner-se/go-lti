@@ -1,6 +1,6 @@
 // Package platform implements the platform side of LTI 1.3: signing the id_token a tool is
-// launched with, verifying Deep Linking responses, Dynamic Registration and the OpenID
-// configuration.
+// launched with, verifying Deep Linking responses, Dynamic Registration, the OpenID configuration
+// and the Link headers of a Names and Role Provisioning Services answer.
 package platform
 
 import (
@@ -29,8 +29,11 @@ var reservedClaims = map[string]bool{
 	lti.ClaimMessageType: true, lti.ClaimVersion: true, lti.ClaimDeploymentID: true,
 	lti.ClaimTargetLinkURI: true, lti.ClaimRoles: true, lti.ClaimContext: true,
 	lti.ClaimResourceLink: true, lti.ClaimLaunchPresentation: true, lti.ClaimToolPlatform: true,
-	lti.ClaimCustom: true, lti.ClaimDeepLinkingSettings: true,
+	lti.ClaimCustom: true, lti.ClaimDeepLinkingSettings: true, lti.ClaimNamesRoleService: true,
 }
+
+// namesRoleServiceVersion is the Names and Role Provisioning Services version a launch offers.
+const namesRoleServiceVersion = "2.0"
 
 // Option configures a Launcher or a DeepLinkingVerifier.
 type Option func(*options)
@@ -200,6 +203,13 @@ func (l *Launcher) idTokenClaims(tool Tool, nonce string, msg lti.Message, now t
 		claims[lti.ClaimContext] = *common.Context
 	}
 
+	if common.ContextMembershipsURL != "" {
+		claims[lti.ClaimNamesRoleService] = namesRoleService{
+			ContextMembershipsURL: common.ContextMembershipsURL,
+			ServiceVersions:       []string{namesRoleServiceVersion},
+		}
+	}
+
 	if len(common.Custom) > 0 {
 		claims[lti.ClaimCustom] = lti.Substitute(common.Custom, substitutionValues(common, link), common.Sharing)
 	}
@@ -296,6 +306,11 @@ func validateCommon(c lti.Common, targetLinkURI string) error {
 		return errors.New("lti: launch target_link_uri must be an absolute https url")
 	case c.Context != nil && (c.Context.ID == "" || len(c.Context.ID) > maxIdentifierLength):
 		return errors.New("lti: launch context needs an id of at most 255 characters")
+	// NRPS 2.0 §3.6.1.1: the service URL matches the launch's context.
+	case c.ContextMembershipsURL != "" && c.Context == nil:
+		return errors.New("lti: launch context_memberships_url needs a context")
+	case c.ContextMembershipsURL != "" && !urlcheck.IsHTTPS(c.ContextMembershipsURL):
+		return errors.New("lti: launch context_memberships_url must be an absolute https url")
 	}
 
 	// LTI 1.3 §5.4.4: return_url is a fully qualified https url.
@@ -331,6 +346,12 @@ func toolPlatformClaim(p Product) toolPlatform {
 		ContactEmail:      p.ContactEmail,
 		URL:               p.URL,
 	}
+}
+
+//nolint:tagliatelle // NRPS 2.0 §3.6.1.1 defines snake_case keys
+type namesRoleService struct {
+	ContextMembershipsURL string   `json:"context_memberships_url"`
+	ServiceVersions       []string `json:"service_versions"`
 }
 
 //nolint:tagliatelle // LTI Deep Linking 2.0 §4.4.1 defines snake_case keys
