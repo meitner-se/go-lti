@@ -2,7 +2,7 @@
 
 LTI 1.3 and LTI Advantage for Go, for the platform side: the system that launches tools, such as an LMS.
 
-It covers the launch (the OIDC third-party login flow and the signed id_token), verifying Deep Linking 2.0 responses, Dynamic Registration 1.0, the platform's OpenID configuration and JWKS, and the launch claim and membership container of Names and Role Provisioning Services 2.0. LTI 1.1 is not supported.
+It covers the launch (the OIDC third-party login flow and the signed id_token), verifying Deep Linking 2.0 responses, Dynamic Registration 1.0, the platform's OpenID configuration and JWKS, and Names and Role Provisioning Services 2.0: the launch claim and the memberships endpoint. LTI 1.1 is not supported.
 
 ```sh
 go get github.com/meitner-se/go-lti
@@ -15,7 +15,7 @@ Work in progress: the API may change until v1.0.0.
 | Package | What it does |
 | -- | -- |
 | `lti` | Types both sides of LTI share: messages and claims, content items, membership containers, roles, scopes and other spec vocabulary, signing keys, and `Error`. |
-| `platform` | The platform side: its `Config`, its record of each `Tool`, the launch flow, Deep Linking verification, Dynamic Registration, the OpenID configuration and the membership service's `Link` headers. |
+| `platform` | The platform side: its `Config`, its record of each `Tool`, the launch flow, Deep Linking verification, Dynamic Registration, the OpenID configuration and the Names and Role Provisioning Services endpoint. |
 | `jwks` | Publishes the platform's keys and fetches tools' keys, with caching. |
 | `safehttp` | An HTTP client that won't connect to private or internal addresses, for URLs a tool controls. |
 | `ltitest` | Test keys, a JWKS server and an in-memory nonce store. |
@@ -134,35 +134,52 @@ The platform's endpoints are the issuer plus `cfg.Paths`, listed by `cfg.Endpoin
 
 ## Names and Role Provisioning Services
 
-Names and Role Provisioning Services 2.0 lets a tool read who is in a context, such as a course's teachers and students. Send the tool the URL where it reads them with the launch, and the launch carries the `namesroleservice` claim with service version 2.0:
+Names and Role Provisioning Services 2.0 lets a tool read who is in a context, such as a course's teachers and students. Set `Paths.ContextMemberships` to a prefix, and a context's members are at the issuer plus the prefix plus `/{context}/memberships`. Send the tool that URL with the launch, built by `cfg.ContextMembershipsURL`, which path-escapes the context's id, and the launch carries the `namesroleservice` claim with service version 2.0:
 
 ```go
+cfg.Paths.ContextMemberships = "/contexts" // https://lms.example.com/lti/contexts/{context}/memberships
+
+membershipsURL, err := cfg.ContextMembershipsURL(contextID)
+
 Common: lti.Common{
 	// ...
 	Context:               &lti.LaunchContext{ID: contextID},
-	ContextMembershipsURL: "https://lms.example.com/lti/contexts/" + url.PathEscape(contextID) + "/memberships",
+	ContextMembershipsURL: membershipsURL,
 },
 ```
 
 The claim belongs to the launch's context, so a launch with a `ContextMembershipsURL` needs a `Context`. Without the URL there is no claim. Send it only to a tool your platform lets read the context's members, such as one granted the `lti.ScopeNRPSMembershipRead` scope.
 
-go-lti has no memberships endpoint, since that needs your access tokens and your data. Your endpoint answers with an `lti.MembershipContainer` as `lti.MembershipContainerMediaType`, and `platform.AddMembershipLinks` links the next page (`rel="next"`) and, if you offer one, the changes since (`rel="differences"`):
+`NewHandler` serves the endpoint when you set `Paths.ContextMemberships` and `ListContextMembers` together, with `AuthorizeService`, which every LTI service endpoint shares. The access token and the members are yours, so it asks you for them:
 
 ```go
-// Next is empty on the last page; Differences is empty unless you offer one.
-if err := platform.AddMembershipLinks(w.Header(), platform.MembershipLinks{Next: nextPageURL}); err != nil {
-	return err
-}
-
-w.Header().Set("Content-Type", lti.MembershipContainerMediaType)
-err := json.NewEncoder(w).Encode(lti.MembershipContainer{
-	ID:      pageURL, // the absolute URL this page was read from
-	Context: lti.MembershipContext{ID: contextID},
-	Members: []lti.Member{{Status: lti.MembershipStatusActive, UserID: sub, Roles: []lti.Role{lti.RoleLearner}}},
+handler, err := platform.NewHandler(cfg, platform.Handlers{
+	Register: register,
+	// Shared by every LTI service endpoint; scope is the one the endpoint needs.
+	AuthorizeService: func(r *http.Request, token string, scope lti.Scope) (platform.ServiceClient, error) {
+		// Look the token up where your token endpoint issued it.
+		return platform.ServiceClient{ClientID: clientID, Scopes: grantedScopes}, nil
+		// or an *lti.Error with lti.ErrorInvalidToken (401) or lti.ErrorInsufficientScope (403)
+	},
+	ListContextMembers: func(r *http.Request, client platform.ServiceClient, req platform.MembershipsRequest) (platform.MembershipsPage, error) {
+		// Check that client may read req.ContextID, then read a page of its members, filtered by
+		// req.Role and req.ResourceLinkID, at most req.Limit of them (0 for your own page size),
+		// starting at req.PageToken.
+		return platform.MembershipsPage{
+			Context:       lti.MembershipContext{ID: req.ContextID},
+			Members:       []lti.Member{{Status: lti.MembershipStatusActive, UserID: sub, Roles: []lti.Role{lti.RoleLearner}}},
+			NextPageToken: nextPageToken, // "" on the last page
+		}, nil
+		// or platform.ErrContextNotFound (404) for a context that doesn't exist or client may not read
+	},
 })
 ```
 
+The handler reads the request's Bearer token (RFC 6750) and answers a request without one with 401 and `WWW-Authenticate: Bearer`, before calling `AuthorizeService`. A token you refuse gets RFC 6750's challenge with its error code, and so does a client whose `Scopes` don't include the endpoint's scope (403 `insufficient_scope`): the handler checks the scope, so `AuthorizeService` only has to validate the token. `AuthorizeService` without a service that uses it is a configuration error. `ErrContextNotFound` is answered 404 with the same JSON error body as the other errors. It answers a page as an `lti.MembershipContainer` with the media type `lti.MembershipContainerMediaType` and `Cache-Control: no-store`. The container's `id` is the request's URL, and while there is a next page it is linked as `rel="next"`: the same URL with your `NextPageToken`, keeping the tool's `role`, `limit` and `rlid`. The page token is opaque to go-lti and the tool.
+
 A member's `UserID` is the `sub` the same tool gets in launches. Fill in the name, email and other personal data only when the tool may have it, as `Sharing` decides in a launch; empty fields are left out.
+
+A platform with its own HTTP handling can answer with an `lti.MembershipContainer` itself, and link the next page (`rel="next"`) and, if it offers one, the changes since (`rel="differences"`) with `platform.AddMembershipLinks`.
 
 ## Errors
 

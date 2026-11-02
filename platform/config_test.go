@@ -34,6 +34,11 @@ func TestConfig_Validate(t *testing.T) {
 		{name: "a path with a ServeMux wildcard", change: func(cfg *Config) { cfg.Paths.JWKS = "/{kid}" }},
 		{name: "two endpoints on one path", change: func(cfg *Config) { cfg.Paths.JWKS = cfg.Paths.Authorization }},
 		{name: "the openid configuration's path", change: func(cfg *Config) { cfg.Paths.Registration = PathOpenIDConfiguration }},
+		{name: "the root as the context memberships path", change: func(cfg *Config) { cfg.Paths.ContextMemberships = "/" }},
+		{name: "a context memberships path with a trailing slash", change: func(cfg *Config) { cfg.Paths.ContextMemberships = "/contexts/" }},
+		{name: "a context memberships path with a ServeMux wildcard", change: func(cfg *Config) { cfg.Paths.ContextMemberships = "/{tenant}/contexts" }},
+		{name: "a context memberships path with a space", change: func(cfg *Config) { cfg.Paths.ContextMemberships = "/my contexts" }},
+		{name: "a context memberships path another endpoint has", change: func(cfg *Config) { cfg.Paths.ContextMemberships = cfg.Paths.JWKS }},
 		{name: "an http token endpoint", change: func(cfg *Config) { cfg.TokenEndpoint = "http://platform.example.com/oauth/token" }},
 		{name: "a relative token endpoint", change: func(cfg *Config) { cfg.TokenEndpoint = "/oauth/token" }},
 		{name: "no product guid", change: func(cfg *Config) { cfg.Product.GUID = "" }},
@@ -50,6 +55,17 @@ func TestConfig_Validate(t *testing.T) {
 			require.Error(t, cfg.Validate())
 		})
 	}
+}
+
+func TestConfig_Validate_ContextMembershipsIsOptional(t *testing.T) {
+	t.Parallel()
+
+	cfg := createTestConfig()
+	require.Empty(t, cfg.Paths.ContextMemberships)
+	require.NoError(t, cfg.Validate())
+
+	cfg.Paths.ContextMemberships = "/contexts"
+	require.NoError(t, cfg.Validate())
 }
 
 func TestConfig_Validate_TokenEndpointIsOptional(t *testing.T) {

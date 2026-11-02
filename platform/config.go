@@ -3,6 +3,7 @@ package platform
 import (
 	"errors"
 	"fmt"
+	"net/url"
 	"path"
 	"strings"
 
@@ -34,15 +35,20 @@ type Config struct {
 // Connect Discovery 1.0 §4 fixes it, so it isn't one of Paths.
 const PathOpenIDConfiguration = "/.well-known/openid-configuration"
 
-// Paths are where the platform's endpoints are under its issuer, such as "/register". Each is
-// required, starts with "/" and is unique. Tools learn the URLs from the OpenID configuration, a
-// Dynamic Registration or a launch, and keep them once registered, so a path must not change after
-// tools have registered.
+// Paths are where the platform's endpoints are under its issuer, such as "/register". Each starts
+// with "/" and is unique, and each is required except ContextMemberships. Tools learn the URLs from
+// the OpenID configuration, a Dynamic Registration or a launch, and keep them once registered, so
+// a path must not change after tools have registered.
 type Paths struct {
 	Authorization  string
 	JWKS           string
 	Registration   string
 	DeepLinkReturn string
+	// ContextMemberships is the prefix of each context's Names and Role Provisioning Services
+	// endpoint, such as "/contexts": a context's members are at the prefix plus
+	// "/{context}/memberships" (see Config.ContextMembershipsURL). Empty when the platform offers
+	// none.
+	ContextMemberships string
 }
 
 // Endpoints are the platform's absolute https URLs.
@@ -75,6 +81,23 @@ func (c Config) Endpoints() Endpoints {
 		Token:               c.TokenEndpoint,
 		DeepLinkReturn:      issuer + c.Paths.DeepLinkReturn,
 	}
+}
+
+// ContextMembershipsURL returns where a tool reads the members of the context with contextID, the
+// ContextMembershipsURL of a launch to it: the issuer plus Paths.ContextMemberships plus
+// "/{context}/memberships", with contextID path-escaped. NewHandler serves it. It fails without
+// Paths.ContextMemberships, and for a contextID that is empty, "." or "..", which no URL path can
+// carry.
+func (c Config) ContextMembershipsURL(contextID string) (string, error) {
+	if c.Paths.ContextMemberships == "" {
+		return "", errors.New("lti: config has no context memberships path")
+	}
+
+	if contextID == "" || contextID == "." || contextID == ".." {
+		return "", errors.New(`lti: a context memberships url needs a context id other than "", "." or ".."`)
+	}
+
+	return strings.TrimSuffix(c.Issuer, "/") + c.Paths.ContextMemberships + "/" + url.PathEscape(contextID) + "/memberships", nil
 }
 
 // Product is the platform's product (LTI 1.3 §5.4.2).
@@ -114,16 +137,24 @@ func (c Config) Validate() error {
 
 // validate checks that each path starts with "/", is clean (no trailing slash, no "." or ".."
 // segments), has no query, fragment, braces or spaces, and differs from the others and from
-// PathOpenIDConfiguration.
+// PathOpenIDConfiguration. An empty ContextMemberships is left out.
 func (p Paths) validate() error {
 	seen := map[string]string{PathOpenIDConfiguration: "the openid configuration"}
 
-	for _, named := range []struct{ name, path string }{
-		{"authorization", p.Authorization},
-		{"jwks", p.JWKS},
-		{"registration", p.Registration},
-		{"deep link return", p.DeepLinkReturn},
+	for _, named := range []struct {
+		name, path string
+		optional   bool
+	}{
+		{"authorization", p.Authorization, false},
+		{"jwks", p.JWKS, false},
+		{"registration", p.Registration, false},
+		{"deep link return", p.DeepLinkReturn, false},
+		{"context memberships", p.ContextMemberships, true},
 	} {
+		if named.optional && named.path == "" {
+			continue
+		}
+
 		if named.path == "" || named.path == "/" || !strings.HasPrefix(named.path, "/") || path.Clean(named.path) != named.path ||
 			strings.ContainsAny(named.path, "?#{} \t\n") {
 			return fmt.Errorf("lti: config %s path must be a clean path such as /register", named.name)
