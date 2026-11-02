@@ -248,21 +248,86 @@ func ExampleNewHandler_deepLinkReturn() {
 }
 
 // A tool launched with a context_memberships_url reads the context's members there with its access
-// token (Names and Role Provisioning Services 2.0). The platform answers with a page of members,
-// and links the next page while there is one.
-func ExampleAddMembershipLinks() {
+// token (Names and Role Provisioning Services 2.0). NewHandler serves the endpoint: it checks the
+// token with AuthorizeService, asks ListContextMembers for a page of members, and links the next
+// page while there is one.
+func ExampleNewHandler_contextMemberships() {
+	cfg := exampleConfig
+	cfg.Paths.ContextMemberships = "/contexts"
+
 	// The launch tells the tool where the context's members are.
+	membershipsURL, err := cfg.ContextMembershipsURL("course-1")
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	_ = &lti.ResourceLinkRequest{
 		Common: lti.Common{
 			DeploymentID:          "deployment-1",
 			Subject:               "user-1",
 			Context:               &lti.LaunchContext{ID: "course-1"},
-			ContextMembershipsURL: "https://lms.example.com/lti/contexts/course-1/memberships",
+			ContextMembershipsURL: membershipsURL,
 		},
 		ResourceLink: lti.ResourceLink{ID: "link-1"},
 	}
 
-	// The memberships endpoint, after checking the tool's access token and the context.
+	// The platform's own members of each context, one per page here.
+	members := map[string][]lti.Member{"course-1": {
+		{Status: lti.MembershipStatusActive, UserID: "user-1", Roles: []lti.Role{lti.RoleInstructor}},
+		{Status: lti.MembershipStatusActive, UserID: "user-2", Roles: []lti.Role{lti.RoleLearner}},
+	}}
+
+	handler, err := platform.NewHandler(cfg, platform.Handlers{
+		Register: func(context.Context, string, *platform.Registration) (platform.RegistrationGrant, error) {
+			return platform.RegistrationGrant{}, lti.NewError(lti.ErrorInvalidToken, "registration is closed", nil)
+		},
+		AuthorizeService: func(_ *http.Request, token string, scope lti.Scope) (platform.ServiceClient, error) {
+			// Look the token up where the token endpoint issued it, and check it was granted scope.
+			if token != "access-token-1" {
+				return platform.ServiceClient{}, lti.NewError(lti.ErrorInvalidToken, "the access token is unknown or expired", nil)
+			}
+
+			return platform.ServiceClient{ClientID: "client-1"}, nil
+		},
+		ListContextMembers: func(_ *http.Request, client platform.ServiceClient, req platform.MembershipsRequest) (platform.MembershipsPage, error) {
+			// Check that client has a deployment in the context, and filter by req.Role and
+			// req.ResourceLinkID.
+			all, ok := members[req.ContextID]
+			if !ok || client.ClientID != "client-1" {
+				return platform.MembershipsPage{}, platform.ErrContextNotFound
+			}
+
+			if req.PageToken == "" {
+				return platform.MembershipsPage{Context: lti.MembershipContext{ID: req.ContextID}, Members: all[:1], NextPageToken: "user-2"}, nil
+			}
+
+			return platform.MembershipsPage{Context: lti.MembershipContext{ID: req.ContextID}, Members: all[1:]}, nil
+		},
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, membershipsURL+"?role=Learner", http.NoBody)
+	req.Header.Set("Accept", lti.MembershipContainerMediaType)
+	req.Header.Set("Authorization", "Bearer access-token-1")
+
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	fmt.Println(w.Code, w.Header().Get("Content-Type"))
+	fmt.Println(w.Header().Get("Link"))
+	fmt.Print(w.Body.String())
+
+	// Output:
+	// 200 application/vnd.ims.lti-nrps.v2.membershipcontainer+json
+	// <https://lms.example.com/lti/contexts/course-1/memberships?page=user-2&role=Learner>; rel="next"
+	// {"id":"https://lms.example.com/lti/contexts/course-1/memberships?role=Learner","context":{"id":"course-1"},"members":[{"status":"Active","user_id":"user-1","roles":["http://purl.imsglobal.org/vocab/lis/v2/membership#Instructor"]}]}
+}
+
+// A platform with its own HTTP handling answers with a membership container itself, and links the
+// next page with AddMembershipLinks.
+func ExampleAddMembershipLinks() {
 	membershipsHandler := func(w http.ResponseWriter, _ *http.Request) {
 		page := lti.MembershipContainer{
 			ID:      "https://lms.example.com/lti/contexts/course-1/memberships?limit=1",

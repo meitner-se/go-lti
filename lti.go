@@ -25,6 +25,7 @@ const (
 	ErrorInvalidClientMetadata   ErrorCode = "invalid_client_metadata"
 	ErrorInvalidRedirectURI      ErrorCode = "invalid_redirect_uri"
 	ErrorInvalidToken            ErrorCode = "invalid_token"
+	ErrorInsufficientScope       ErrorCode = "insufficient_scope"
 	ErrorServerError             ErrorCode = "server_error"
 )
 
@@ -58,11 +59,13 @@ func (e *Error) Error() string {
 }
 
 // StatusCode returns the HTTP status to answer with: 401 for invalid_client and invalid_token,
-// 500 for server_error, 400 otherwise.
+// 403 for insufficient_scope, 500 for server_error, 400 otherwise.
 func (e *Error) StatusCode() int {
 	switch e.Code {
 	case ErrorInvalidClient, ErrorInvalidToken:
 		return http.StatusUnauthorized
+	case ErrorInsufficientScope:
+		return http.StatusForbidden
 	case ErrorServerError:
 		return http.StatusInternalServerError
 	default:

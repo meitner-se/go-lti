@@ -1,6 +1,6 @@
 // Package platform implements the platform side of LTI 1.3: signing the id_token a tool is
 // launched with, verifying Deep Linking responses, Dynamic Registration, the OpenID configuration
-// and the Link headers of a Names and Role Provisioning Services answer.
+// and the Names and Role Provisioning Services memberships endpoint.
 package platform
 
 import (

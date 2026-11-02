@@ -5,8 +5,8 @@
 // Services 2.0 request with; Common.ContextMembershipsURL sends a tool the URL to ask at.
 //
 // The platform side (its configuration, its record of each tool, launches, Deep Linking
-// verification, Dynamic Registration, the OpenID configuration and the membership service's Link
-// headers) lives in package platform.
+// verification, Dynamic Registration, the OpenID configuration and the Names and Role Provisioning
+// Services endpoint) lives in package platform.
 // Package jwks publishes and fetches keys, safehttp fetches tool-controlled URLs safely, and
 // ltitest has test doubles.
 //

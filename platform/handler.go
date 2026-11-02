@@ -79,6 +79,26 @@ type Handlers struct {
 	// Verify only checks what the specs require. A platform with policies of its own, such as
 	// items only from the tool's domains (see OnToolDomains), applies them here.
 	HandleDeepLinkingResponse func(w http.ResponseWriter, r *http.Request, result DeepLinkingResult)
+	// AuthorizeService checks the access token of a request to one of the platform's LTI services,
+	// such as Names and Role Provisioning Services, and returns the tool it was issued to. token is
+	// the request's Bearer token (RFC 6750 §2.1); a request without one is answered 401 before
+	// AuthorizeService is called. scope is the scope the service needs, such as
+	// lti.ScopeNRPSMembershipRead. Set it with the services that use it.
+	//
+	// Return an *lti.Error with lti.ErrorInvalidToken for a token that is unknown, expired or
+	// revoked, and one with lti.ErrorInsufficientScope for a token that wasn't granted scope; the
+	// tool gets a 401 or a 403 with RFC 6750 §3's challenge. Any other *lti.Error is sent to the
+	// tool with its StatusCode, except a server_error. A server_error, or an error that isn't an
+	// *lti.Error, gets a 500 that says nothing more.
+	AuthorizeService func(r *http.Request, token string, scope lti.Scope) (ServiceClient, error)
+	// ListContextMembers returns a page of the members of req.ContextID, for a tool AuthorizeService
+	// granted lti.ScopeNRPSMembershipRead. Set Paths.ContextMemberships, AuthorizeService and
+	// ListContextMembers together to serve Names and Role Provisioning Services.
+	//
+	// Check that client may read the context, such as by having a deployment in it, and return an
+	// error that is or wraps ErrContextNotFound for a context that doesn't exist or that client may
+	// not read; the tool gets a 404. Any other error is answered as for AuthorizeService.
+	ListContextMembers func(r *http.Request, client ServiceClient, req MembershipsRequest) (MembershipsPage, error)
 	// Logger, when set, logs every error a tool or browser is answered with: a rejection at Warn
 	// with its code, any other error at Error.
 	Logger *slog.Logger
@@ -99,12 +119,17 @@ type Handlers struct {
 //   - POST Paths.DeepLinkReturn: the Deep Linking response a tool posts back (Deep Linking 2.0
 //     §4.2), verified and handed to HandleDeepLinkingResponse. Served with ToolKeys, Nonces,
 //     FindDeepLinkingSession and HandleDeepLinkingResponse.
+//   - GET Paths.ContextMemberships plus "/{context}/memberships": a page of the context's members
+//     (Names and Role Provisioning Services 2.0 §2.4), from ListContextMembers, for a tool whose
+//     access token AuthorizeService grants lti.ScopeNRPSMembershipRead. Served with
+//     Paths.ContextMemberships, AuthorizeService and ListContextMembers.
 //
 // Mount it to receive every request under the issuer's path, with the path unchanged. Any other
 // path is a 404 and any other method a 405. An error page sent to a browser is plain text with
 // Cache-Control: no-store and a Content-Security-Policy that allows nothing. It fails when cfg
-// can't make an OpenID configuration, h has no Register, h has only one of Keys and Launch, or h
-// has only some of the Deep Linking fields.
+// can't make an OpenID configuration, h has no Register, h has only one of Keys and Launch, h has
+// only some of the Deep Linking fields, or only some of Paths.ContextMemberships, AuthorizeService
+// and ListContextMembers are set.
 func NewHandler(cfg Config, h Handlers) (http.Handler, error) {
 	if h.Register == nil {
 		return nil, errors.New("lti: the handler needs a Register function")
@@ -117,6 +142,11 @@ func NewHandler(cfg Config, h Handlers) (http.Handler, error) {
 	deepLinking := []bool{h.ToolKeys != nil, h.Nonces != nil, h.FindDeepLinkingSession != nil, h.HandleDeepLinkingResponse != nil}
 	if slices.Contains(deepLinking, true) && slices.Contains(deepLinking, false) {
 		return nil, errors.New("lti: the handler needs all of ToolKeys, Nonces, FindDeepLinkingSession and HandleDeepLinkingResponse to serve the deep linking return, or none")
+	}
+
+	memberships := []bool{cfg.Paths.ContextMemberships != "", h.AuthorizeService != nil, h.ListContextMembers != nil}
+	if slices.Contains(memberships, true) && slices.Contains(memberships, false) {
+		return nil, errors.New("lti: the handler needs all of Paths.ContextMemberships, AuthorizeService and ListContextMembers to serve context memberships, or none")
 	}
 
 	document, err := cfg.OpenIDConfiguration()
@@ -139,7 +169,7 @@ func NewHandler(cfg Config, h Handlers) (http.Handler, error) {
 		return nil, errors.New("lti: the issuer's path must not contain braces")
 	}
 
-	e := &endpoints{handlers: h, launcher: nil, verifier: nil}
+	e := &endpoints{config: cfg, handlers: h, launcher: nil, verifier: nil}
 
 	mux := http.NewServeMux()
 	mux.Handle("GET "+issuer.Path+PathOpenIDConfiguration, openIDConfigurationHandler(discovery))
@@ -165,6 +195,10 @@ func NewHandler(cfg Config, h Handlers) (http.Handler, error) {
 		mux.HandleFunc("POST "+issuer.Path+cfg.Paths.DeepLinkReturn, e.deepLinkReturn)
 	}
 
+	if h.ListContextMembers != nil {
+		mux.HandleFunc("GET "+issuer.Path+cfg.Paths.ContextMemberships+"/{context}/memberships", e.contextMemberships)
+	}
+
 	return mux, nil
 }
 
@@ -178,6 +212,7 @@ func openIDConfigurationHandler(body []byte) http.Handler {
 }
 
 type endpoints struct {
+	config   Config
 	handlers Handlers
 	launcher *Launcher
 	verifier *DeepLinkingVerifier
@@ -233,10 +268,11 @@ func (e *endpoints) register(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, encoded)
 }
 
-// registrationError is RFC 7591 §3.2.2's error response.
+// errorResponse is OAuth 2.0's error response (RFC 6749 §5.2), which Dynamic Registration
+// (RFC 7591 §3.2.2) and the LTI services answer with.
 //
-//nolint:tagliatelle // RFC 7591 §3.2.2 defines snake_case keys
-type registrationError struct {
+//nolint:tagliatelle // RFC 6749 §5.2 defines snake_case keys
+type errorResponse struct {
 	Error            lti.ErrorCode `json:"error"`
 	ErrorDescription string        `json:"error_description"`
 }
@@ -253,7 +289,7 @@ func (e *endpoints) failRegistration(w http.ResponseWriter, r *http.Request, err
 		w.Header().Set("WWW-Authenticate", `Bearer error="invalid_token"`)
 	}
 
-	body, _ := json.Marshal(registrationError{Error: rejection.Code, ErrorDescription: rejection.Description}) //nolint:errcheck // errchkjson: two strings always encode
+	body, _ := json.Marshal(errorResponse{Error: rejection.Code, ErrorDescription: rejection.Description}) //nolint:errcheck // errchkjson: two strings always encode
 	writeJSON(w, rejection.StatusCode(), body)
 }
 
