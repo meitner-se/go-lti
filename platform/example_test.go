@@ -248,9 +248,9 @@ func ExampleNewHandler_deepLinkReturn() {
 }
 
 // A tool launched with a context_memberships_url reads the context's members there with its access
-// token (Names and Role Provisioning Services 2.0). NewHandler serves the endpoint: it checks the
-// token with AuthorizeService, asks ListContextMembers for a page of members, and links the next
-// page while there is one.
+// token (Names and Role Provisioning Services 2.0). NewHandler serves the endpoint: it validates
+// the token with AuthorizeService, checks that it was granted the memberships scope, asks
+// ListContextMembers for a page of members, and links the next page while there is one.
 func ExampleNewHandler_contextMemberships() {
 	cfg := exampleConfig
 	cfg.Paths.ContextMemberships = "/contexts"
@@ -281,13 +281,13 @@ func ExampleNewHandler_contextMemberships() {
 		Register: func(context.Context, string, *platform.Registration) (platform.RegistrationGrant, error) {
 			return platform.RegistrationGrant{}, lti.NewError(lti.ErrorInvalidToken, "registration is closed", nil)
 		},
-		AuthorizeService: func(_ *http.Request, token string, scope lti.Scope) (platform.ServiceClient, error) {
-			// Look the token up where the token endpoint issued it, and check it was granted scope.
+		AuthorizeService: func(_ *http.Request, token string, _ lti.Scope) (platform.ServiceClient, error) {
+			// Look the token up where the token endpoint issued it. NewHandler checks the scope.
 			if token != "access-token-1" {
 				return platform.ServiceClient{}, lti.NewError(lti.ErrorInvalidToken, "the access token is unknown or expired", nil)
 			}
 
-			return platform.ServiceClient{ClientID: "client-1"}, nil
+			return platform.ServiceClient{ClientID: "client-1", Scopes: []lti.Scope{lti.ScopeNRPSMembershipRead}}, nil
 		},
 		ListContextMembers: func(_ *http.Request, client platform.ServiceClient, req platform.MembershipsRequest) (platform.MembershipsPage, error) {
 			// Check that client has a deployment in the context, and filter by req.Role and

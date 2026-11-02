@@ -1,9 +1,9 @@
 package platform
 
 import (
-	"encoding/json"
 	"errors"
 	"net/http"
+	"slices"
 
 	"github.com/meitner-se/go-lti"
 )
@@ -12,15 +12,22 @@ import (
 // challenge without an error code, as RFC 6750 §3.1 asks.
 var errServiceTokenMissing = lti.NewError(lti.ErrorInvalidToken, "the access token is missing", nil)
 
+// errServiceScopeMissing answers a service request whose access token wasn't granted the scope the
+// service needs.
+var errServiceScopeMissing = lti.NewError(lti.ErrorInsufficientScope, "the access token wasn't granted the scope this service needs", nil)
+
 // ServiceClient is the tool a request to one of the platform's LTI services comes from, as
 // AuthorizeService identified it by its access token.
 type ServiceClient struct {
 	// ClientID is the tool's OAuth client_id, the one the access token was issued to. Required.
 	ClientID string
+	// Scopes are the scopes the access token was granted. A request to a service whose scope isn't
+	// among them is refused as insufficient_scope.
+	Scopes []lti.Scope
 }
 
-// authorizeService reads the request's Bearer token and has AuthorizeService check it for scope.
-// It answers a request it refuses itself and returns false.
+// authorizeService reads the request's Bearer token, has AuthorizeService check it, and refuses a
+// client whose token wasn't granted scope. It answers a request it refuses itself and returns false.
 func (e *endpoints) authorizeService(w http.ResponseWriter, r *http.Request, scope lti.Scope) (ServiceClient, bool) {
 	token := bearerToken(r.Header.Get("Authorization"))
 	if token == "" {
@@ -34,6 +41,10 @@ func (e *endpoints) authorizeService(w http.ResponseWriter, r *http.Request, sco
 	client, err := e.handlers.AuthorizeService(r, token, scope)
 	if err == nil && client.ClientID == "" {
 		err = errors.New("lti: AuthorizeService returned no client and no error")
+	}
+
+	if err == nil && !slices.Contains(client.Scopes, scope) {
+		err = errServiceScopeMissing
 	}
 
 	if err != nil {
@@ -65,6 +76,5 @@ func (e *endpoints) failService(w http.ResponseWriter, r *http.Request, scope lt
 		w.Header().Set("WWW-Authenticate", `Bearer error="insufficient_scope", scope="`+string(scope)+`"`)
 	}
 
-	body, _ := json.Marshal(errorResponse{Error: rejection.Code, ErrorDescription: rejection.Description}) //nolint:errcheck // errchkjson: two strings always encode
-	writeJSON(w, rejection.StatusCode(), body)
+	writeErrorResponse(w, rejection.StatusCode(), rejection)
 }

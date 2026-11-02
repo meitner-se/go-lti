@@ -150,7 +150,7 @@ Common: lti.Common{
 
 The claim belongs to the launch's context, so a launch with a `ContextMembershipsURL` needs a `Context`. Without the URL there is no claim. Send it only to a tool your platform lets read the context's members, such as one granted the `lti.ScopeNRPSMembershipRead` scope.
 
-`NewHandler` serves the endpoint when you set `Paths.ContextMemberships`, `AuthorizeService` and `ListContextMembers` together. The access token and the members are yours, so it asks you for them:
+`NewHandler` serves the endpoint when you set `Paths.ContextMemberships` and `ListContextMembers` together, with `AuthorizeService`, which every LTI service endpoint shares. The access token and the members are yours, so it asks you for them:
 
 ```go
 handler, err := platform.NewHandler(cfg, platform.Handlers{
@@ -158,7 +158,7 @@ handler, err := platform.NewHandler(cfg, platform.Handlers{
 	// Shared by every LTI service endpoint; scope is the one the endpoint needs.
 	AuthorizeService: func(r *http.Request, token string, scope lti.Scope) (platform.ServiceClient, error) {
 		// Look the token up where your token endpoint issued it.
-		return platform.ServiceClient{ClientID: clientID}, nil
+		return platform.ServiceClient{ClientID: clientID, Scopes: grantedScopes}, nil
 		// or an *lti.Error with lti.ErrorInvalidToken (401) or lti.ErrorInsufficientScope (403)
 	},
 	ListContextMembers: func(r *http.Request, client platform.ServiceClient, req platform.MembershipsRequest) (platform.MembershipsPage, error) {
@@ -175,7 +175,7 @@ handler, err := platform.NewHandler(cfg, platform.Handlers{
 })
 ```
 
-The handler reads the request's Bearer token (RFC 6750) and answers a request without one with 401 and `WWW-Authenticate: Bearer`, before calling `AuthorizeService`. A token you refuse gets RFC 6750's challenge with its error code. It answers a page as an `lti.MembershipContainer` with the media type `lti.MembershipContainerMediaType` and `Cache-Control: no-store`. The container's `id` is the request's URL, and while there is a next page it is linked as `rel="next"`: the same URL with your `NextPageToken`, keeping the tool's `role`, `limit` and `rlid`. The page token is opaque to go-lti and the tool.
+The handler reads the request's Bearer token (RFC 6750) and answers a request without one with 401 and `WWW-Authenticate: Bearer`, before calling `AuthorizeService`. A token you refuse gets RFC 6750's challenge with its error code, and so does a client whose `Scopes` don't include the endpoint's scope (403 `insufficient_scope`): the handler checks the scope, so `AuthorizeService` only has to validate the token. `AuthorizeService` without a service that uses it is a configuration error. `ErrContextNotFound` is answered 404 with the same JSON error body as the other errors. It answers a page as an `lti.MembershipContainer` with the media type `lti.MembershipContainerMediaType` and `Cache-Control: no-store`. The container's `id` is the request's URL, and while there is a next page it is linked as `rel="next"`: the same URL with your `NextPageToken`, keeping the tool's `role`, `limit` and `rlid`. The page token is opaque to go-lti and the tool.
 
 A member's `UserID` is the `sub` the same tool gets in launches. Fill in the name, email and other personal data only when the tool may have it, as `Sharing` decides in a launch; empty fields are left out.
 

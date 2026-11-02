@@ -14,7 +14,7 @@ import (
 	"github.com/meitner-se/go-lti"
 )
 
-// membershipsServer is a platform's memberships: its access tokens and each context's members,
+// membershipsServer is a platform's memberships: its access tokens and their scopes, and each context's members,
 // served a page of pageSize members at a time with the next member's index as the page token. It
 // records the requests ListContextMembers got.
 type membershipsServer struct {
@@ -28,8 +28,10 @@ type membershipsServer struct {
 func newMembershipsServer() *membershipsServer {
 	return &membershipsServer{
 		tokens: map[string][]lti.Scope{
-			"token-1":      {lti.ScopeNRPSMembershipRead},
+			"token-1":      {lti.ScopeAGSScore, lti.ScopeNRPSMembershipRead},
 			"token-scores": {lti.ScopeAGSScore},
+			// The platform refuses this token itself, as for a policy of its own.
+			"token-suspended": {lti.ScopeNRPSMembershipRead},
 		},
 		contexts: map[string][]lti.Member{
 			"course-1": {
@@ -37,7 +39,7 @@ func newMembershipsServer() *membershipsServer {
 				{Status: lti.MembershipStatusActive, UserID: "user-2", Roles: []lti.Role{lti.RoleLearner}},
 				{Status: lti.MembershipStatusInactive, UserID: "user-3", Roles: []lti.Role{lti.RoleLearner}},
 			},
-			"workspace:a b/c": {{UserID: "user-1", Roles: []lti.Role{lti.RoleLearner}}},
+			"course:a b/c": {{UserID: "user-1", Roles: []lti.Role{lti.RoleLearner}}},
 		},
 		pageSize: 2,
 	}
@@ -51,13 +53,12 @@ func (s *membershipsServer) authorize(_ *http.Request, token string, scope lti.S
 		return ServiceClient{}, lti.NewError(lti.ErrorInvalidToken, "the access token is unknown or expired", nil)
 	}
 
-	for _, g := range granted {
-		if g == scope {
-			return ServiceClient{ClientID: "client-1"}, nil
-		}
+	if token == "token-suspended" {
+		return ServiceClient{}, lti.NewError(lti.ErrorInsufficientScope, "the tool is suspended", nil)
 	}
 
-	return ServiceClient{}, lti.NewError(lti.ErrorInsufficientScope, "the access token can't read memberships", nil)
+	// Only the token is validated here: go-lti checks the scope against the granted ones.
+	return ServiceClient{ClientID: "client-1", Scopes: granted}, nil
 }
 
 func (s *membershipsServer) list(_ *http.Request, client ServiceClient, req MembershipsRequest) (MembershipsPage, error) {
@@ -289,13 +290,13 @@ func TestNewHandler_ContextMembershipsUnescapesTheContextID(t *testing.T) {
 	s := newMembershipsServer()
 	handler := newMembershipsTestHandler(t, s)
 
-	w := getMemberships(t, handler, "https://platform.example.com/lti/contexts/workspace:a%20b%2Fc/memberships", "token-1")
+	w := getMemberships(t, handler, "https://platform.example.com/lti/contexts/course:a%20b%2Fc/memberships", "token-1")
 
 	got := requireMembershipContainer(t, w)
-	assert.Equal(t, "https://platform.example.com/lti/contexts/workspace:a%20b%2Fc/memberships", got["id"])
-	assert.Equal(t, map[string]any{"id": "workspace:a b/c", "title": "Biology 1"}, got["context"])
+	assert.Equal(t, "https://platform.example.com/lti/contexts/course:a%20b%2Fc/memberships", got["id"])
+	assert.Equal(t, map[string]any{"id": "course:a b/c", "title": "Biology 1"}, got["context"])
 	require.Len(t, s.requests, 1)
-	assert.Equal(t, "workspace:a b/c", s.requests[0].ContextID)
+	assert.Equal(t, "course:a b/c", s.requests[0].ContextID)
 }
 
 func TestNewHandler_ContextMembershipsURLRoundTrips(t *testing.T) {
@@ -303,7 +304,7 @@ func TestNewHandler_ContextMembershipsURLRoundTrips(t *testing.T) {
 
 	cfg := createMembershipsTestConfig()
 
-	for _, contextID := range []string{"course-1", "workspace:a b/c", "a/../b", "a//b", "a%2Fb", "x?y#z", "a;b", "kurs-åäö", "..."} {
+	for _, contextID := range []string{"course-1", "course:a b/c", "a/../b", "a//b", "a%2Fb", "x?y#z", "a;b", "course-åäö", "..."} {
 		var got string
 
 		handler, err := NewHandler(cfg, Handlers{
@@ -362,7 +363,12 @@ func TestNewHandler_ContextMembershipsRefusesTokens(t *testing.T) {
 	}{
 		{name: "an unknown token", token: "token-unknown", status: http.StatusUnauthorized, challenge: `Bearer error="invalid_token"`, code: lti.ErrorInvalidToken},
 		{
-			name: "a token without the memberships scope", token: "token-scores", status: http.StatusForbidden,
+			name: "a client whose token wasn't granted the memberships scope", token: "token-scores", status: http.StatusForbidden,
+			challenge: `Bearer error="insufficient_scope", scope="https://purl.imsglobal.org/spec/lti-nrps/scope/contextmembership.readonly"`,
+			code:      lti.ErrorInsufficientScope,
+		},
+		{
+			name: "a token AuthorizeService refuses as insufficient_scope", token: "token-suspended", status: http.StatusForbidden,
 			challenge: `Bearer error="insufficient_scope", scope="https://purl.imsglobal.org/spec/lti-nrps/scope/contextmembership.readonly"`,
 			code:      lti.ErrorInsufficientScope,
 		},
@@ -406,9 +412,12 @@ func TestNewHandler_ContextMembershipsAnswersAnUnknownContextWith404(t *testing.
 
 	w := getMemberships(t, handler, "https://platform.example.com/lti/contexts/course-2/memberships", "token-1")
 
-	assert.Equal(t, http.StatusNotFound, w.Code)
+	require.Equal(t, http.StatusNotFound, w.Code)
 	assert.Equal(t, "no-store", w.Header().Get("Cache-Control"))
+	assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
+	assert.Empty(t, w.Header().Get("WWW-Authenticate"))
 	assert.Empty(t, w.Header().Values("Link"))
+	assert.JSONEq(t, `{"error":"invalid_request","error_description":"the context is unknown"}`, w.Body.String())
 	require.Len(t, reported, 1)
 	require.ErrorIs(t, reported[0], ErrContextNotFound)
 }
@@ -500,30 +509,52 @@ func TestNewHandler_ContextMembershipsMethods(t *testing.T) {
 	assert.Equal(t, http.StatusNotFound, w.Code)
 }
 
-func TestNewHandler_ContextMembershipsNeedsItsPathAndBothHandlers(t *testing.T) {
+func TestNewHandler_ContextMembershipsConfiguration(t *testing.T) {
 	t.Parallel()
 
 	s := newMembershipsServer()
 
-	for name, without := range map[string]func(*Config, *Handlers){
-		"Paths.ContextMemberships": func(cfg *Config, _ *Handlers) { cfg.Paths.ContextMemberships = "" },
-		"AuthorizeService":         func(_ *Config, h *Handlers) { h.AuthorizeService = nil },
-		"ListContextMembers":       func(_ *Config, h *Handlers) { h.ListContextMembers = nil },
-		"the handlers": func(_ *Config, h *Handlers) {
-			h.AuthorizeService = nil
-			h.ListContextMembers = nil
-		},
-		"the path and AuthorizeService": func(cfg *Config, h *Handlers) {
-			cfg.Paths.ContextMemberships = ""
-			h.AuthorizeService = nil
-		},
-	} {
-		cfg := createMembershipsTestConfig()
-		h := Handlers{Register: granting(&[]string{}), AuthorizeService: s.authorize, ListContextMembers: s.list}
-		without(&cfg, &h)
+	tests := []struct {
+		name      string
+		path      string
+		authorize bool
+		list      bool
+		wantErr   string
+	}{
+		{name: "the path and both handlers", path: "/contexts", authorize: true, list: true},
+		{name: "none of them", path: "", authorize: false, list: false},
+		{name: "the path without ListContextMembers", path: "/contexts", authorize: true, list: false, wantErr: "both Paths.ContextMemberships and ListContextMembers"},
+		{name: "the path alone", path: "/contexts", authorize: false, list: false, wantErr: "both Paths.ContextMemberships and ListContextMembers"},
+		{name: "ListContextMembers without the path", path: "", authorize: true, list: true, wantErr: "both Paths.ContextMemberships and ListContextMembers"},
+		{name: "memberships without AuthorizeService", path: "/contexts", authorize: false, list: true, wantErr: "needs AuthorizeService"},
+		{name: "AuthorizeService without a service", path: "", authorize: true, list: false, wantErr: "serves no LTI service"},
+	}
 
-		_, err := NewHandler(cfg, h)
-		require.Error(t, err, "without "+name)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			cfg := createTestConfig()
+			cfg.Paths.ContextMemberships = tt.path
+
+			h := Handlers{Register: granting(&[]string{})}
+			if tt.authorize {
+				h.AuthorizeService = s.authorize
+			}
+
+			if tt.list {
+				h.ListContextMembers = s.list
+			}
+
+			_, err := NewHandler(cfg, h)
+			if tt.wantErr == "" {
+				require.NoError(t, err)
+
+				return
+			}
+
+			require.ErrorContains(t, err, tt.wantErr)
+		})
 	}
 
 	handler := newTestHandler(t, Handlers{Register: granting(&[]string{})})
@@ -539,9 +570,9 @@ func TestConfig_ContextMembershipsURL(t *testing.T) {
 		cfg := createMembershipsTestConfig()
 		cfg.Issuer = issuer
 
-		got, err := cfg.ContextMembershipsURL("workspace:a b/c")
+		got, err := cfg.ContextMembershipsURL("course:a b/c")
 		require.NoError(t, err)
-		assert.Equal(t, "https://platform.example.com/lti/contexts/workspace:a%20b%2Fc/memberships", got)
+		assert.Equal(t, "https://platform.example.com/lti/contexts/course:a%20b%2Fc/memberships", got)
 	}
 
 	cfg := createMembershipsTestConfig()

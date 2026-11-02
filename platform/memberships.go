@@ -14,7 +14,7 @@ import (
 )
 
 // ErrContextNotFound is what ListContextMembers returns, or wraps, for a context that doesn't
-// exist or that the tool may not read. The tool gets a 404.
+// exist or that the tool may not read. The tool gets a 404 with OAuth 2.0's error response.
 var ErrContextNotFound = lti.NewError(lti.ErrorInvalidRequest, "the context is unknown", nil)
 
 // errMembershipsLimit answers a memberships request whose limit isn't a positive integer.
@@ -118,7 +118,7 @@ func (e *endpoints) contextMemberships(w http.ResponseWriter, r *http.Request) {
 	page, err := e.handlers.ListContextMembers(r, client, req)
 	if errors.Is(err, ErrContextNotFound) {
 		e.report(r, err)
-		http.Error(w, ErrContextNotFound.Description, http.StatusNotFound)
+		writeErrorResponse(w, http.StatusNotFound, ErrContextNotFound)
 
 		return
 	}
