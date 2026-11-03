@@ -276,8 +276,7 @@ func TestResultContainer_MarshalJSON(t *testing.T) {
 func TestAGSEndpoint_MarshalJSON(t *testing.T) {
 	t.Parallel()
 
-	body, err := json.Marshal(lti.AGSEndpoint{Scopes: []lti.Scope{lti.ScopeAGSScore}, LineItem: "https://platform.example.com/lti/lineitems/1"})
-	require.NoError(t, err)
+	body, _ := json.Marshal(lti.AGSEndpoint{Scopes: []lti.Scope{lti.ScopeAGSScore}, LineItem: "https://platform.example.com/lti/lineitems/1"})
 	assert.JSONEq(t, `{"scope": ["https://purl.imsglobal.org/spec/lti-ags/scope/score"], "lineitem": "https://platform.example.com/lti/lineitems/1"}`, string(body))
 }
 

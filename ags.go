@@ -38,6 +38,8 @@ func (c LineItemContainer) MarshalJSON() ([]byte, error) {
 }
 
 // LineItem is a gradebook column (AGS 2.0 §3.2); empty optional fields are left out.
+//
+//nolint:tagliatelle // AGS 2.0 defines keys such as userId and resourceLinkId
 type LineItem struct {
 	// ID is the line item's URL, empty in a tool's create request since the platform picks it.
 	ID string `json:"id,omitempty"`
@@ -93,6 +95,8 @@ func (l *LineItem) UnmarshalJSON(data []byte) error {
 }
 
 // Score is a user's score and progress as a tool posts it (AGS 2.0 §3.4).
+//
+//nolint:tagliatelle // AGS 2.0 defines keys such as userId and resourceLinkId
 type Score struct {
 	// UserID is the user's sub in launches to the same tool.
 	UserID string `json:"userId"`
@@ -188,6 +192,8 @@ func (c ResultContainer) MarshalJSON() ([]byte, error) {
 }
 
 // Result is a user's current score for a line item in the platform's gradebook (AGS 2.0 §3.3.4).
+//
+//nolint:tagliatelle // AGS 2.0 defines keys such as userId and resourceLinkId
 type Result struct {
 	ID string `json:"id"`
 	// ScoreOf is the line item's ID.
