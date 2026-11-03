@@ -1,0 +1,15 @@
+{
+  "description": "Only Assignment and Grade Services scopes belong in the endpoint claim.",
+  "message_type": "LtiResourceLinkRequest",
+  "context": {
+    "id": "course-1"
+  },
+  "ags_endpoint": {
+    "scope": [
+      "https://purl.imsglobal.org/spec/lti-ags/scope/score",
+      "https://purl.imsglobal.org/spec/lti-nrps/scope/contextmembership.readonly"
+    ],
+    "lineitem": "https://platform.example.com/lti/contexts/course-1/lineitems/1"
+  },
+  "valid": false
+}

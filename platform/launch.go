@@ -30,6 +30,7 @@ var reservedClaims = map[string]bool{
 	lti.ClaimTargetLinkURI: true, lti.ClaimRoles: true, lti.ClaimContext: true,
 	lti.ClaimResourceLink: true, lti.ClaimLaunchPresentation: true, lti.ClaimToolPlatform: true,
 	lti.ClaimCustom: true, lti.ClaimDeepLinkingSettings: true, lti.ClaimNamesRoleService: true,
+	lti.ClaimAGSEndpoint: true,
 }
 
 // namesRoleServiceVersion is the Names and Role Provisioning Services version a launch offers.
@@ -161,6 +162,11 @@ func (l *Launcher) idTokenClaims(tool Tool, nonce string, msg lti.Message, now t
 			return nil, err
 		}
 
+		// AGS 2.0 §3.1: lineitem is only for launching a resource that has one.
+		if m.AGSEndpoint != nil && m.AGSEndpoint.LineItem != "" {
+			return nil, errors.New("lti: deep linking request can't carry an ags lineitem url")
+		}
+
 		common = m.Common
 		claims[lti.ClaimDeepLinkingSettings] = settings
 	default:
@@ -208,6 +214,10 @@ func (l *Launcher) idTokenClaims(tool Tool, nonce string, msg lti.Message, now t
 			ContextMembershipsURL: common.ContextMembershipsURL,
 			ServiceVersions:       []string{namesRoleServiceVersion},
 		}
+	}
+
+	if common.AGSEndpoint != nil {
+		claims[lti.ClaimAGSEndpoint] = *common.AGSEndpoint
 	}
 
 	if len(common.Custom) > 0 {
@@ -313,6 +323,12 @@ func validateCommon(c lti.Common, targetLinkURI string) error {
 		return errors.New("lti: launch context_memberships_url must be an absolute https url")
 	}
 
+	if c.AGSEndpoint != nil {
+		if err := validateAGSEndpoint(*c.AGSEndpoint, c.Context); err != nil {
+			return err
+		}
+	}
+
 	// LTI 1.3 §5.4.4: return_url is a fully qualified https url.
 	if c.Presentation.ReturnURL != "" && !urlcheck.IsHTTPS(c.Presentation.ReturnURL) {
 		return errors.New("lti: launch presentation return_url must be an absolute https url")
@@ -325,6 +341,32 @@ func validateCommon(c lti.Common, targetLinkURI string) error {
 	default:
 		return errors.New("lti: launch document_target must be frame, iframe or window")
 	}
+}
+
+func validateAGSEndpoint(e lti.AGSEndpoint, launchContext *lti.LaunchContext) error {
+	switch {
+	// AGS 2.0 §3.1: lineitems is the launch context's container.
+	case launchContext == nil:
+		return errors.New("lti: launch ags endpoint needs a context")
+	case len(e.Scopes) == 0:
+		return errors.New("lti: launch ags endpoint needs a scope")
+	case e.LineItems == "" && e.LineItem == "":
+		return errors.New("lti: launch ags endpoint needs a lineitems or lineitem url")
+	case e.LineItems != "" && !urlcheck.IsHTTPS(e.LineItems):
+		return errors.New("lti: launch ags lineitems must be an absolute https url")
+	case e.LineItem != "" && !urlcheck.IsHTTPS(e.LineItem):
+		return errors.New("lti: launch ags lineitem must be an absolute https url")
+	}
+
+	for _, scope := range e.Scopes {
+		switch scope {
+		case lti.ScopeAGSLineItem, lti.ScopeAGSLineItemReadOnly, lti.ScopeAGSResultReadOnly, lti.ScopeAGSScore:
+		default:
+			return fmt.Errorf("lti: launch ags scope %q is not an assignment and grade services scope", scope)
+		}
+	}
+
+	return nil
 }
 
 //nolint:tagliatelle // LTI 1.3 §5.4.2 defines snake_case keys

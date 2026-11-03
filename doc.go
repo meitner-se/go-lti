@@ -4,6 +4,9 @@
 // MembershipContainer and Member are what a platform answers a Names and Role Provisioning
 // Services 2.0 request with; Common.ContextMembershipsURL sends a tool the URL to ask at.
 //
+// LineItem, Score and Result are the bodies of Assignment and Grade Services 2.0;
+// Common.AGSEndpoint sends a tool the endpoint claim with its URLs and scopes.
+//
 // The platform side (its configuration, its record of each tool, launches, Deep Linking
 // verification, Dynamic Registration, the OpenID configuration and the Names and Role Provisioning
 // Services endpoint) lives in package platform.

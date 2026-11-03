@@ -110,7 +110,7 @@ type testEndpointClaim struct {
 }
 
 func (testEndpointClaim) ClaimName() string {
-	return "https://purl.imsglobal.org/spec/lti-ags/claim/endpoint"
+	return "https://platform.example.com/lti/claim/endpoint"
 }
 
 type testNamedClaim struct{ name string }
@@ -258,6 +258,58 @@ func TestLauncher_IDTokenClaims_NamesRoleService(t *testing.T) {
 		require.NoError(t, err)
 		assert.NotContains(t, claims, lti.ClaimNamesRoleService)
 	}
+}
+
+func TestLauncher_IDTokenClaims_AGSEndpoint(t *testing.T) {
+	t.Parallel()
+
+	launcher := createTestLauncher(t, ltitest.NewSigningKey(t))
+
+	link := createTestResourceLinkRequest()
+	link.AGSEndpoint = &lti.AGSEndpoint{
+		Scopes:    []lti.Scope{lti.ScopeAGSLineItem, lti.ScopeAGSResultReadOnly, lti.ScopeAGSScore},
+		LineItems: "https://platform.example.com/lti/contexts/course-1/lineitems",
+		LineItem:  "https://platform.example.com/lti/contexts/course-1/lineitems/1",
+	}
+
+	claims, err := launcher.idTokenClaims(createTestTool(), "nonce-1", link, testNow)
+	require.NoError(t, err)
+	assert.Contains(t, claimsJSON(t, claims), `"https://purl.imsglobal.org/spec/lti-ags/claim/endpoint":{"scope":["https://purl.imsglobal.org/spec/lti-ags/scope/lineitem","https://purl.imsglobal.org/spec/lti-ags/scope/result.readonly","https://purl.imsglobal.org/spec/lti-ags/scope/score"],"lineitems":"https://platform.example.com/lti/contexts/course-1/lineitems","lineitem":"https://platform.example.com/lti/contexts/course-1/lineitems/1"}`)
+
+	// AGS 2.0 §3.1.1.3: a tool that may only post scores gets the link's line item alone.
+	link.AGSEndpoint = &lti.AGSEndpoint{Scopes: []lti.Scope{lti.ScopeAGSScore}, LineItem: "https://platform.example.com/lti/contexts/course-1/lineitems/1"}
+
+	claims, err = launcher.idTokenClaims(createTestTool(), "nonce-1", link, testNow)
+	require.NoError(t, err)
+	assert.Contains(t, claimsJSON(t, claims), `"https://purl.imsglobal.org/spec/lti-ags/claim/endpoint":{"scope":["https://purl.imsglobal.org/spec/lti-ags/scope/score"],"lineitem":"https://platform.example.com/lti/contexts/course-1/lineitems/1"}`)
+
+	deepLinking := createTestDeepLinkingRequest()
+	deepLinking.AGSEndpoint = &lti.AGSEndpoint{Scopes: []lti.Scope{lti.ScopeAGSLineItem}, LineItems: "https://platform.example.com/lti/contexts/course-1/lineitems"}
+
+	claims, err = launcher.idTokenClaims(createTestTool(), "nonce-1", deepLinking, testNow)
+	require.NoError(t, err)
+	assert.Contains(t, claimsJSON(t, claims), `"https://purl.imsglobal.org/spec/lti-ags/claim/endpoint":{"scope":["https://purl.imsglobal.org/spec/lti-ags/scope/lineitem"],"lineitems":"https://platform.example.com/lti/contexts/course-1/lineitems"}`)
+
+	claims, err = launcher.idTokenClaims(createTestTool(), "nonce-1", createTestResourceLinkRequest(), testNow)
+	require.NoError(t, err)
+	assert.NotContains(t, claims, lti.ClaimAGSEndpoint)
+}
+
+func TestLauncher_IDTokenClaims_RejectsDeepLinkingWithAGSLineItem(t *testing.T) {
+	t.Parallel()
+
+	launcher := createTestLauncher(t, ltitest.NewSigningKey(t))
+
+	// AGS 2.0 §3.1: lineitem is for launching a resource with one line item, which a Deep Linking request isn't.
+	msg := createTestDeepLinkingRequest()
+	msg.AGSEndpoint = &lti.AGSEndpoint{
+		Scopes:    []lti.Scope{lti.ScopeAGSScore},
+		LineItems: "https://platform.example.com/lti/contexts/course-1/lineitems",
+		LineItem:  "https://platform.example.com/lti/contexts/course-1/lineitems/1",
+	}
+
+	_, err := launcher.idTokenClaims(createTestTool(), "nonce-1", msg, testNow)
+	require.Error(t, err)
 }
 
 func TestLauncher_IDTokenClaims_SharesPersonalDataOnlyWhenAllowed(t *testing.T) {
@@ -515,7 +567,7 @@ func TestLauncher_IDTokenClaims_AddsExtensions(t *testing.T) {
 	claims, err := launcher.idTokenClaims(createTestTool(), "nonce-1", msg, testNow)
 	require.NoError(t, err)
 
-	assert.Contains(t, claimsJSON(t, claims), `"https://purl.imsglobal.org/spec/lti-ags/claim/endpoint":{"url":"https://platform.example.com/lti/lineitems"}`)
+	assert.Contains(t, claimsJSON(t, claims), `"https://platform.example.com/lti/claim/endpoint":{"url":"https://platform.example.com/lti/lineitems"}`)
 }
 
 func TestLauncher_IDTokenClaims_RejectsExtensionsThatOverrideClaims(t *testing.T) {
@@ -568,6 +620,34 @@ func TestLauncher_IDTokenClaims_Rejects(t *testing.T) {
 			m.ContextMembershipsURL = "http://platform.example.com/lti/memberships"
 		}},
 		{name: "a relative context_memberships_url", msg: func(m *lti.ResourceLinkRequest) { m.ContextMembershipsURL = "/lti/memberships" }},
+		{name: "an ags endpoint without a context", msg: func(m *lti.ResourceLinkRequest) {
+			m.Context = nil
+			m.AGSEndpoint = &lti.AGSEndpoint{Scopes: []lti.Scope{lti.ScopeAGSScore}, LineItem: "https://platform.example.com/lti/lineitems/1"}
+		}},
+		{name: "an ags endpoint without scopes", msg: func(m *lti.ResourceLinkRequest) {
+			m.AGSEndpoint = &lti.AGSEndpoint{LineItem: "https://platform.example.com/lti/lineitems/1"}
+		}},
+		{name: "an ags endpoint with a names and role scope", msg: func(m *lti.ResourceLinkRequest) {
+			m.AGSEndpoint = &lti.AGSEndpoint{Scopes: []lti.Scope{lti.ScopeAGSScore, lti.ScopeNRPSMembershipRead}, LineItem: "https://platform.example.com/lti/lineitems/1"}
+		}},
+		{name: "an ags endpoint with an unknown scope", msg: func(m *lti.ResourceLinkRequest) {
+			m.AGSEndpoint = &lti.AGSEndpoint{Scopes: []lti.Scope{"https://purl.imsglobal.org/spec/lti-ags/scope/everything"}, LineItem: "https://platform.example.com/lti/lineitems/1"}
+		}},
+		{name: "an ags endpoint without urls", msg: func(m *lti.ResourceLinkRequest) {
+			m.AGSEndpoint = &lti.AGSEndpoint{Scopes: []lti.Scope{lti.ScopeAGSScore}}
+		}},
+		{name: "an http ags lineitems url", msg: func(m *lti.ResourceLinkRequest) {
+			m.AGSEndpoint = &lti.AGSEndpoint{Scopes: []lti.Scope{lti.ScopeAGSLineItem}, LineItems: "http://platform.example.com/lti/lineitems"}
+		}},
+		{name: "a relative ags lineitems url", msg: func(m *lti.ResourceLinkRequest) {
+			m.AGSEndpoint = &lti.AGSEndpoint{Scopes: []lti.Scope{lti.ScopeAGSLineItem}, LineItems: "/lti/lineitems"}
+		}},
+		{name: "an http ags lineitem url", msg: func(m *lti.ResourceLinkRequest) {
+			m.AGSEndpoint = &lti.AGSEndpoint{Scopes: []lti.Scope{lti.ScopeAGSScore}, LineItem: "http://platform.example.com/lti/lineitems/1"}
+		}},
+		{name: "a relative ags lineitem url", msg: func(m *lti.ResourceLinkRequest) {
+			m.AGSEndpoint = &lti.AGSEndpoint{Scopes: []lti.Scope{lti.ScopeAGSScore}, LineItem: "/lti/lineitems/1"}
+		}},
 		{name: "a resource link without id", msg: func(m *lti.ResourceLinkRequest) { m.ResourceLink = lti.ResourceLink{Title: "Quiz"} }},
 		{name: "a resource link id over 255 characters", msg: func(m *lti.ResourceLinkRequest) { m.ResourceLink.ID = strings.Repeat("a", 256) }},
 	}
@@ -724,7 +804,7 @@ func TestRegression_ExtensionsCantSetReservedClaimsTheMessageLeavesOut(t *testin
 
 	launcher := createTestLauncher(t, ltitest.NewSigningKey(t))
 
-	for _, name := range []string{lti.ClaimContext, lti.ClaimCustom, lti.ClaimLaunchPresentation, lti.ClaimDeepLinkingSettings, lti.ClaimNamesRoleService} {
+	for _, name := range []string{lti.ClaimContext, lti.ClaimCustom, lti.ClaimLaunchPresentation, lti.ClaimDeepLinkingSettings, lti.ClaimNamesRoleService, lti.ClaimAGSEndpoint} {
 		msg := createTestResourceLinkRequest()
 		msg.Context = nil
 		msg.Custom = nil

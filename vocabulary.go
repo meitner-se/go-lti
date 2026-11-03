@@ -87,6 +87,31 @@ const (
 	MembershipStatusDeleted MembershipStatus = "Deleted"
 )
 
+// ActivityProgress is a user's progress in an activity (Assignment and Grade Services 2.0 §3.4.7).
+type ActivityProgress string
+
+// Activity progress values.
+const (
+	ActivityProgressInitialized ActivityProgress = "Initialized"
+	ActivityProgressStarted     ActivityProgress = "Started"
+	ActivityProgressInProgress  ActivityProgress = "InProgress"
+	ActivityProgressSubmitted   ActivityProgress = "Submitted"
+	ActivityProgressCompleted   ActivityProgress = "Completed"
+)
+
+// GradingProgress is the status of grading a score (Assignment and Grade Services 2.0 §3.4.8).
+type GradingProgress string
+
+// Grading progress values.
+const (
+	// GradingProgressFullyGraded is the only value whose score is final; the others are partial.
+	GradingProgressFullyGraded   GradingProgress = "FullyGraded"
+	GradingProgressPending       GradingProgress = "Pending"
+	GradingProgressPendingManual GradingProgress = "PendingManual"
+	GradingProgressFailed        GradingProgress = "Failed"
+	GradingProgressNotReady      GradingProgress = "NotReady"
+)
+
 // DocumentTarget says how the platform shows the tool or a content item. The two specs that use it
 // allow different values: a launch's document_target is frame, iframe or window (LTI 1.3 §5.4.4),
 // and Deep Linking's accept_presentation_document_targets are embed, iframe or window (LTI Deep

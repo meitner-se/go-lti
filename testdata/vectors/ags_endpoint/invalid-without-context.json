@@ -1,0 +1,11 @@
+{
+  "description": "The line item container is the launch context's (AGS 2.0 §3.1), so a launch without a context can't carry the claim.",
+  "message_type": "LtiResourceLinkRequest",
+  "ags_endpoint": {
+    "scope": [
+      "https://purl.imsglobal.org/spec/lti-ags/scope/score"
+    ],
+    "lineitem": "https://platform.example.com/lti/contexts/course-1/lineitems/1"
+  },
+  "valid": false
+}

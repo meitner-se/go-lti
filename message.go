@@ -6,8 +6,8 @@ import (
 	"math"
 )
 
-// Claim names from LTI 1.3 §5, LTI Deep Linking 2.0 §4 and Names and Role Provisioning Services 2.0
-// §3.6.1.1.
+// Claim names from LTI 1.3 §5, LTI Deep Linking 2.0 §4, Names and Role Provisioning Services 2.0
+// §3.6.1.1 and Assignment and Grade Services 2.0 §3.1.
 const (
 	ClaimMessageType         = "https://purl.imsglobal.org/spec/lti/claim/message_type"
 	ClaimVersion             = "https://purl.imsglobal.org/spec/lti/claim/version"
@@ -27,6 +27,7 @@ const (
 	ClaimDeepLinkingErrorMsg = "https://purl.imsglobal.org/spec/lti-dl/claim/errormsg"
 	ClaimDeepLinkingErrorLog = "https://purl.imsglobal.org/spec/lti-dl/claim/errorlog"
 	ClaimNamesRoleService    = "https://purl.imsglobal.org/spec/lti-nrps/claim/namesroleservice"
+	ClaimAGSEndpoint         = "https://purl.imsglobal.org/spec/lti-ags/claim/endpoint"
 )
 
 // Message is a message the platform launches a tool with: *ResourceLinkRequest or
@@ -81,6 +82,8 @@ type Common struct {
 	// the namesroleservice claim (NRPS 2.0 §3.6.1.1), so it needs Context. Set it only for a tool
 	// the platform lets read the members.
 	ContextMembershipsURL string
+	// AGSEndpoint, when set, sends the Assignment and Grade Services endpoint claim; it needs Context.
+	AGSEndpoint *AGSEndpoint
 	// Presentation is how the platform shows the tool.
 	Presentation Presentation
 	// Custom are the custom parameters of the link or tool, as configured. The launch substitutes

@@ -1,0 +1,13 @@
+{
+  "description": "A claim with neither lineitems nor lineitem gives the tool nowhere to use its scopes.",
+  "message_type": "LtiResourceLinkRequest",
+  "context": {
+    "id": "course-1"
+  },
+  "ags_endpoint": {
+    "scope": [
+      "https://purl.imsglobal.org/spec/lti-ags/scope/score"
+    ]
+  },
+  "valid": false
+}

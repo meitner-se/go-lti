@@ -2,7 +2,7 @@
 
 LTI 1.3 and LTI Advantage for Go, for the platform side: the system that launches tools, such as an LMS.
 
-It covers the launch (the OIDC third-party login flow and the signed id_token), verifying Deep Linking 2.0 responses, Dynamic Registration 1.0, the platform's OpenID configuration and JWKS, and Names and Role Provisioning Services 2.0: the launch claim and the memberships endpoint. LTI 1.1 is not supported.
+It covers the launch (the OIDC third-party login flow and the signed id_token), verifying Deep Linking 2.0 responses, Dynamic Registration 1.0, the platform's OpenID configuration and JWKS, Names and Role Provisioning Services 2.0 (the launch claim and the memberships endpoint) and Assignment and Grade Services 2.0 (the launch claim and the line item, score and result types). LTI 1.1 is not supported.
 
 ```sh
 go get github.com/meitner-se/go-lti
@@ -14,7 +14,7 @@ Work in progress: the API may change until v1.0.0.
 
 | Package | What it does |
 | -- | -- |
-| `lti` | Types both sides of LTI share: messages and claims, content items, membership containers, roles, scopes and other spec vocabulary, signing keys, and `Error`. |
+| `lti` | Types both sides of LTI share: messages and claims, content items, membership containers, line items, scores and results, roles, scopes and other spec vocabulary, signing keys, and `Error`. |
 | `platform` | The platform side: its `Config`, its record of each `Tool`, the launch flow, Deep Linking verification, Dynamic Registration, the OpenID configuration and the Names and Role Provisioning Services endpoint. |
 | `jwks` | Publishes the platform's keys and fetches tools' keys, with caching. |
 | `safehttp` | An HTTP client that won't connect to private or internal addresses, for URLs a tool controls. |
@@ -181,13 +181,35 @@ A member's `UserID` is the `sub` the same tool gets in launches. Fill in the nam
 
 A platform with its own HTTP handling can answer with an `lti.MembershipContainer` itself, and link the next page (`rel="next"`) and, if it offers one, the changes since (`rel="differences"`) with `platform.AddMembershipLinks`.
 
+## Assignment and Grade Services
+
+Assignment and Grade Services 2.0 lets a tool send scores back to the platform's gradebook. Each gradebook column is a line item; a tool posts a user's score to it and reads the platform's results. Tell the tool where with the launch's `AGSEndpoint`, and the launch carries the `endpoint` claim:
+
+```go
+Common: lti.Common{
+	// ...
+	Context: &lti.LaunchContext{ID: contextID},
+	AGSEndpoint: &lti.AGSEndpoint{
+		Scopes:    []lti.Scope{lti.ScopeAGSLineItem, lti.ScopeAGSResultReadOnly, lti.ScopeAGSScore},
+		LineItems: "https://lms.example.com/lti/contexts/course-1/lineitems",
+		LineItem:  "https://lms.example.com/lti/contexts/course-1/lineitems/1", // the link's only line item, if it has one
+	},
+},
+```
+
+The line item container belongs to the launch's context, so a launch with an `AGSEndpoint` needs a `Context`. It needs at least one scope, only the four `lti.ScopeAGS*` scopes, and a `LineItems` or `LineItem` URL, each absolute https. Leave `LineItems` empty for a tool that may only post scores, and `LineItem` empty when the link has no line item or several; a Deep Linking request can't have a `LineItem`. Without an `AGSEndpoint` there is no claim. List only scopes your platform grants the tool.
+
+The service's bodies are `lti.LineItem` (and `lti.LineItemContainer`, a list of them), `lti.Score` and `lti.ResultContainer` of `lti.Result`, with the media types `lti.LineItemContainerMediaType`, `lti.LineItemMediaType`, `lti.ScoreMediaType` and `lti.ResultContainerMediaType`. Empty optional fields are left out, and an empty container is sent as `[]`. A score's `ScoreGiven` is a pointer, since 0 is a score and nil is none; its `ActivityProgress` and `GradingProgress` are the spec's values, such as `lti.ActivityProgressCompleted` and `lti.GradingProgressFullyGraded`. Times are written in ISO 8601 to the millisecond or finer, and read in every form the spec allows, including an offset such as `+00`; a blank or null line item time is nil. go-lti doesn't serve the line item, score and result endpoints yet.
+
+A Deep Linking `ltiResourceLink` can ask for a line item. go-lti checks it has a positive `scoreMaximum` and keeps it as `ContentItem.LineItem`, which decodes into an `lti.LineItem`.
+
 ## Errors
 
 A rejection of something a tool or a browser sent is an `*lti.Error` with the spec's error code (such as `invalid_request` or `invalid_redirect_uri`) and a description that is safe to send back. Any other error is your platform's own, such as a signer or network failure.
 
 ## Test vectors
 
-`testdata/vectors/` holds JSON cases with their expected results, for JWKS documents, Dynamic Registration requests, Deep Linking responses, custom parameter substitution and the Names and Role Provisioning Services launch claim. go-lti's tests run them, and an implementation in another language can run the same cases. See [testdata/vectors/README.md](testdata/vectors/README.md).
+`testdata/vectors/` holds JSON cases with their expected results, for JWKS documents, Dynamic Registration requests, Deep Linking responses, custom parameter substitution and the Names and Role Provisioning Services and Assignment and Grade Services launch claims. go-lti's tests run them, and an implementation in another language can run the same cases. See [testdata/vectors/README.md](testdata/vectors/README.md).
 
 ## Security
 

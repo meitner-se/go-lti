@@ -1,0 +1,15 @@
+{
+  "description": "lineitem is for launching a resource with exactly one line item (AGS 2.0 §3.1), which a Deep Linking request isn't.",
+  "message_type": "LtiDeepLinkingRequest",
+  "context": {
+    "id": "course-1"
+  },
+  "ags_endpoint": {
+    "scope": [
+      "https://purl.imsglobal.org/spec/lti-ags/scope/score"
+    ],
+    "lineitems": "https://platform.example.com/lti/contexts/course-1/lineitems",
+    "lineitem": "https://platform.example.com/lti/contexts/course-1/lineitems/1"
+  },
+  "valid": false
+}
