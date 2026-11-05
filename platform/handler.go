@@ -110,13 +110,15 @@ type Handlers struct {
 	//
 	// A line item a hook returns has its ID the platform's own id for it, unique in its context,
 	// and go-lti answers with Config.LineItemURL as the id; a line item a hook gets has no ID.
-	// Check that client may use the context and the line item, such as by having a deployment in
-	// the context and, for a change, by having created the line item, and return an error that is
-	// or wraps ErrContextNotFound or ErrLineItemNotFound otherwise; the tool gets a 404. Any other
-	// error is answered as for AuthorizeService.
+	// A line item belongs to one client: the one that created it, or whose link the platform made
+	// it for, such as from a Deep Linking lineItem. Every hook, reads included, sees only client's
+	// own line items and their results, never another tool's. Check that client may use the
+	// context, such as by having a deployment in it, and that the line item is client's, and return
+	// an error that is or wraps ErrContextNotFound or ErrLineItemNotFound otherwise; the tool gets
+	// a 404. Any other error is answered as for AuthorizeService.
 	//
-	// ListLineItems returns a page of the context's line items, filtered by the request, for a
-	// client granted lti.ScopeAGSLineItem or lti.ScopeAGSLineItemReadOnly.
+	// ListLineItems returns a page of client's line items in the context, filtered by the request,
+	// for a client granted lti.ScopeAGSLineItem or lti.ScopeAGSLineItemReadOnly.
 	ListLineItems func(r *http.Request, client ServiceClient, req LineItemsRequest) (LineItemsPage, error)
 	// GetLineItem returns one line item, for a client granted lti.ScopeAGSLineItem or
 	// lti.ScopeAGSLineItemReadOnly.
