@@ -1,0 +1,14 @@
+{
+  "description": "The line item URL must be an absolute https URL, not relative to the platform.",
+  "message_type": "LtiResourceLinkRequest",
+  "context": {
+    "id": "course-1"
+  },
+  "ags_endpoint": {
+    "scope": [
+      "https://purl.imsglobal.org/spec/lti-ags/scope/score"
+    ],
+    "lineitem": "/lti/contexts/course-1/lineitems/1"
+  },
+  "valid": false
+}

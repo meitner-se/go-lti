@@ -1,0 +1,20 @@
+{
+  "description": "A Deep Linking request in a context may carry the endpoint claim with the container URL.",
+  "message_type": "LtiDeepLinkingRequest",
+  "context": {
+    "id": "course-1"
+  },
+  "ags_endpoint": {
+    "scope": [
+      "https://purl.imsglobal.org/spec/lti-ags/scope/lineitem"
+    ],
+    "lineitems": "https://platform.example.com/lti/contexts/course-1/lineitems"
+  },
+  "valid": true,
+  "expect_claim": {
+    "scope": [
+      "https://purl.imsglobal.org/spec/lti-ags/scope/lineitem"
+    ],
+    "lineitems": "https://platform.example.com/lti/contexts/course-1/lineitems"
+  }
+}

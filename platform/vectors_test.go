@@ -324,3 +324,65 @@ func TestLauncher_NamesRoleService_Vectors(t *testing.T) {
 		})
 	}
 }
+
+//nolint:tagliatelle // the vector files are shared with other languages and use snake_case
+type agsEndpointVector struct {
+	Description string             `json:"description"`
+	MessageType lti.MessageType    `json:"message_type"`
+	Context     *lti.LaunchContext `json:"context"`
+	AGSEndpoint *lti.AGSEndpoint   `json:"ags_endpoint"`
+	Valid       bool               `json:"valid"`
+	ExpectClaim json.RawMessage    `json:"expect_claim"`
+}
+
+func TestLauncher_AGSEndpoint_Vectors(t *testing.T) {
+	t.Parallel()
+
+	launcher := createTestLauncher(t, ltitest.NewSigningKey(t))
+
+	for name, v := range loadVectors[agsEndpointVector](t, "ags_endpoint") {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			common := lti.Common{
+				DeploymentID: "deployment-1",
+				Subject:      "3f2a8c1e-7d4b-4e8f-9a6c-1b2d3e4f5a6b",
+				Context:      v.Context,
+				AGSEndpoint:  v.AGSEndpoint,
+			}
+
+			var msg lti.Message
+
+			switch v.MessageType {
+			case lti.MessageTypeResourceLinkRequest:
+				msg = &lti.ResourceLinkRequest{Common: common, ResourceLink: lti.ResourceLink{ID: "link-1"}}
+			case lti.MessageTypeDeepLinkingRequest:
+				msg = &lti.DeepLinkingRequest{Common: common, Settings: createTestDeepLinkingSettings()}
+			default:
+				t.Fatalf("unknown message_type %q", v.MessageType)
+			}
+
+			claims, err := launcher.idTokenClaims(createTestTool(), "nonce-1", msg, testNow)
+			if !v.Valid {
+				require.Error(t, err, v.Description)
+
+				return
+			}
+
+			require.NoError(t, err, v.Description)
+
+			claim, ok := claims[lti.ClaimAGSEndpoint]
+			if len(v.ExpectClaim) == 0 || string(v.ExpectClaim) == "null" {
+				assert.False(t, ok, v.Description)
+
+				return
+			}
+
+			require.True(t, ok, v.Description)
+
+			body, err := json.Marshal(claim)
+			require.NoError(t, err)
+			assert.JSONEq(t, string(v.ExpectClaim), string(body), v.Description)
+		})
+	}
+}

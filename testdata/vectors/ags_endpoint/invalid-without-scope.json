@@ -1,0 +1,12 @@
+{
+  "description": "The claim lists the scopes the tool may ask an access token for (AGS 2.0 §3.1); with none the tool can use no service.",
+  "message_type": "LtiResourceLinkRequest",
+  "context": {
+    "id": "course-1"
+  },
+  "ags_endpoint": {
+    "scope": [],
+    "lineitem": "https://platform.example.com/lti/contexts/course-1/lineitems/1"
+  },
+  "valid": false
+}

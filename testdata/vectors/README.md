@@ -50,6 +50,17 @@ A valid case has the number of `items` returned. An invalid case has the `error_
 substring of its `error_description`. Every item URL must be https (LTI 1.3 §3.5); items needn't
 be on the tool's domains.
 
+## `ags_endpoint/`
+
+A launch message and the Assignment and Grade Services endpoint it is sent with. `message_type` is
+`LtiResourceLinkRequest` or `LtiDeepLinkingRequest`, `context` is the launch's context claim, if
+any, and `ags_endpoint` is the `scope`, `lineitems` and `lineitem` the platform sets, if any. A
+valid case has `expect_claim`: the `https://purl.imsglobal.org/spec/lti-ags/claim/endpoint` claim
+the launch sends, or `null` when it sends none. An invalid case must be refused: the claim needs a
+context (AGS 2.0 §3.1), at least one scope, only AGS scopes, and a `lineitems` or `lineitem` URL,
+each an absolute https URL. A Deep Linking request launches no resource, so it can't carry a
+`lineitem`.
+
 ## `names_role_service/`
 
 A launch message and the Names and Role Provisioning Services URL it is sent with. `message_type`

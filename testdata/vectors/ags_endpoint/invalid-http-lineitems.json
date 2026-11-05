@@ -1,0 +1,14 @@
+{
+  "description": "The container URL must be an absolute https URL (LTI 1.3 §3.5).",
+  "message_type": "LtiResourceLinkRequest",
+  "context": {
+    "id": "course-1"
+  },
+  "ags_endpoint": {
+    "scope": [
+      "https://purl.imsglobal.org/spec/lti-ags/scope/lineitem"
+    ],
+    "lineitems": "http://platform.example.com/lti/contexts/course-1/lineitems"
+  },
+  "valid": false
+}

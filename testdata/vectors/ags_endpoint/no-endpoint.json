@@ -1,0 +1,9 @@
+{
+  "description": "A launch in a context without an AGS endpoint has no endpoint claim.",
+  "message_type": "LtiResourceLinkRequest",
+  "context": {
+    "id": "course-1"
+  },
+  "valid": true,
+  "expect_claim": null
+}
