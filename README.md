@@ -218,20 +218,20 @@ The service's bodies are `lti.LineItem` (and `lti.LineItemContainer`, a list of 
 | `POST /{lineitem}/scores` | `score` | `PostScore` | 204 |
 | `GET /{lineitem}/results` | `result.readonly` | `ListResults` | 200, `lti.ResultContainerMediaType` |
 
-The hooks know a line item by your own id for it, unique in its context, and go-lti answers with its URL, `cfg.LineItemURL`, as its `id`; a result's `scoreOf` is that URL and its `id` the results URL filtered to its user. go-lti checks the scope, the ids in the path, and what the tool sends: a line item needs a label and a `scoreMaximum` greater than 0, and a score needs a `userId`, a `timestamp` and known progress values, with a `scoreMaximum` greater than 0 for a `scoreGiven` of 0 or more. A `scoreGiven` above the maximum is accepted. Bodies over 64 KiB are refused with 413.
+A line item belongs to one client: the tool that created it, or whose link you made it for, such as from a Deep Linking `lineItem`. Every hook, reads included, sees only that client's line items and their results; answer another tool's as `ErrLineItemNotFound`. The hooks know a line item by your own id for it, unique in its context, and go-lti answers with its URL, `cfg.LineItemURL`, as its `id`; a result's `scoreOf` is that URL and its `id` the results URL filtered to its user. go-lti checks the scope, the ids in the path, and what the tool sends: a line item needs a label and a `scoreMaximum` greater than 0, and a score needs a `userId`, a `timestamp` and known progress values, with a `scoreMaximum` greater than 0 for a `scoreGiven` of 0 or more. A `scoreGiven` above the maximum is accepted. Bodies over 64 KiB are refused with 413.
 
 ```go
 handler, err := platform.NewHandler(cfg, platform.Handlers{
 	Register:         register,
 	AuthorizeService: authorizeService, // as for Names and Role Provisioning Services
 	ListLineItems: func(r *http.Request, client platform.ServiceClient, req platform.LineItemsRequest) (platform.LineItemsPage, error) {
-		// Check that client may use req.ContextID, then read a page of its line items, filtered by
+		// Check that client may use req.ContextID, then read a page of client's line items in it, filtered by
 		// req.ResourceLinkID, req.ResourceID and req.Tag, starting at req.PageToken.
 		return platform.LineItemsPage{LineItems: items, NextPageToken: nextPageToken}, nil
 		// or platform.ErrContextNotFound (404)
 	},
 	PostScore: func(r *http.Request, client platform.ServiceClient, req platform.LineItemRequest, score lti.Score) error {
-		// Check that score.UserID is a learner in req.ContextID, then keep the score.
+		// Check that the line item is client's and score.UserID a learner in req.ContextID, then keep the score.
 		return nil
 		// or platform.ErrLineItemNotFound (404), or platform.ErrStaleScore (409) for a score whose
 		// Timestamp isn't after the one you have for the line item and user

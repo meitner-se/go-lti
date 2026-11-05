@@ -384,7 +384,7 @@ func ExampleNewHandler_assignmentAndGradeServices() {
 
 			return platform.ServiceClient{ClientID: "client-1", Scopes: []lti.Scope{lti.ScopeAGSLineItem, lti.ScopeAGSScore}}, nil
 		},
-		// Each hook checks that client may use the context, such as by having a deployment in it.
+		// Each hook checks that client may use the context and sees only client's own line items.
 		ListLineItems: func(_ *http.Request, _ platform.ServiceClient, req platform.LineItemsRequest) (platform.LineItemsPage, error) {
 			return platform.LineItemsPage{LineItems: lineItems[req.ContextID]}, nil
 		},
