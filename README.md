@@ -2,7 +2,7 @@
 
 LTI 1.3 and LTI Advantage for Go, for the platform side: the system that launches tools, such as an LMS.
 
-It covers the launch (the OIDC third-party login flow and the signed id_token), verifying Deep Linking 2.0 responses, Dynamic Registration 1.0, the platform's OpenID configuration and JWKS, Names and Role Provisioning Services 2.0 (the launch claim and the memberships endpoint) and Assignment and Grade Services 2.0 (the launch claim and the line item, score and result types). LTI 1.1 is not supported.
+It covers the launch (the OIDC third-party login flow and the signed id_token), verifying Deep Linking 2.0 responses, Dynamic Registration 1.0, the platform's OpenID configuration and JWKS, Names and Role Provisioning Services 2.0 (the launch claim and the memberships endpoint) and Assignment and Grade Services 2.0 (the launch claim and the line item, score and result endpoints). LTI 1.1 is not supported.
 
 ```sh
 go get github.com/meitner-se/go-lti
@@ -15,7 +15,7 @@ Work in progress: the API may change until v1.0.0.
 | Package | What it does |
 | -- | -- |
 | `lti` | Types both sides of LTI share: messages and claims, content items, membership containers, line items, scores and results, roles, scopes and other spec vocabulary, signing keys, and `Error`. |
-| `platform` | The platform side: its `Config`, its record of each `Tool`, the launch flow, Deep Linking verification, Dynamic Registration, the OpenID configuration and the Names and Role Provisioning Services endpoint. |
+| `platform` | The platform side: its `Config`, its record of each `Tool`, the launch flow, Deep Linking verification, Dynamic Registration, the OpenID configuration, the Names and Role Provisioning Services endpoint and the Assignment and Grade Services endpoints. |
 | `jwks` | Publishes the platform's keys and fetches tools' keys, with caching. |
 | `safehttp` | An HTTP client that won't connect to private or internal addresses, for URLs a tool controls. |
 | `ltitest` | Test keys, a JWKS server and an in-memory nonce store. |
@@ -186,20 +186,61 @@ A platform with its own HTTP handling can answer with an `lti.MembershipContaine
 Assignment and Grade Services 2.0 lets a tool send scores back to the platform's gradebook. Each gradebook column is a line item; a tool posts a user's score to it and reads the platform's results. Tell the tool where with the launch's `AGSEndpoint`, and the launch carries the `endpoint` claim:
 
 ```go
+cfg.Paths.ContextLineItems = "/contexts" // https://lms.example.com/lti/contexts/{context}/lineitems
+
+lineItemsURL, err := cfg.LineItemsURL(contextID)
+lineItemURL, err := cfg.LineItemURL(contextID, lineItemID) // the link's only line item, if it has one
+
 Common: lti.Common{
 	// ...
 	Context: &lti.LaunchContext{ID: contextID},
 	AGSEndpoint: &lti.AGSEndpoint{
 		Scopes:    []lti.Scope{lti.ScopeAGSLineItem, lti.ScopeAGSResultReadOnly, lti.ScopeAGSScore},
-		LineItems: "https://lms.example.com/lti/contexts/course-1/lineitems",
-		LineItem:  "https://lms.example.com/lti/contexts/course-1/lineitems/1", // the link's only line item, if it has one
+		LineItems: lineItemsURL,
+		LineItem:  lineItemURL,
 	},
 },
 ```
 
 The line item container belongs to the launch's context, so a launch with an `AGSEndpoint` needs a `Context`. It needs at least one scope, only the four `lti.ScopeAGS*` scopes, and a `LineItems` or `LineItem` URL, each absolute https. Leave `LineItems` empty for a tool that may only post scores, and `LineItem` empty when the link has no line item or several; a Deep Linking request can't have a `LineItem`. Without an `AGSEndpoint` there is no claim. List only scopes your platform grants the tool.
 
-The service's bodies are `lti.LineItem` (and `lti.LineItemContainer`, a list of them), `lti.Score` and `lti.ResultContainer` of `lti.Result`, with the media types `lti.LineItemContainerMediaType`, `lti.LineItemMediaType`, `lti.ScoreMediaType` and `lti.ResultContainerMediaType`. Empty optional fields are left out, and an empty container is sent as `[]`. A score's `ScoreGiven` is a pointer, since 0 is a score and nil is none; its `ActivityProgress` and `GradingProgress` are the spec's values, such as `lti.ActivityProgressCompleted` and `lti.GradingProgressFullyGraded`. Times are written in ISO 8601 to the millisecond or finer, and read in every form the spec allows, including an offset such as `+00`; a blank or null line item time is nil. go-lti doesn't serve the line item, score and result endpoints yet.
+The service's bodies are `lti.LineItem` (and `lti.LineItemContainer`, a list of them), `lti.Score` and `lti.ResultContainer` of `lti.Result`, with the media types `lti.LineItemContainerMediaType`, `lti.LineItemMediaType`, `lti.ScoreMediaType` and `lti.ResultContainerMediaType`. Empty optional fields are left out, and an empty container is sent as `[]`. A score's `ScoreGiven` is a pointer, since 0 is a score and nil is none; its `ActivityProgress` and `GradingProgress` are the spec's values, such as `lti.ActivityProgressCompleted` and `lti.GradingProgressFullyGraded`. Times are written in ISO 8601 to the millisecond or finer, and read in every form the spec allows, including an offset such as `+00`, and ISO 8601's basic offset such as `+0000`; a blank or null line item time is nil.
+
+`NewHandler` serves the line item, score and result endpoints when you set `Paths.ContextLineItems` and all seven line item hooks together, with `AuthorizeService`. `Paths.ContextLineItems` may be the same prefix as `Paths.ContextMemberships`. Under `{prefix}/{context}/lineitems` it serves:
+
+| Route | Scope | Hook | Answer |
+| -- | -- | -- | -- |
+| `GET` | `lineitem` or `lineitem.readonly` | `ListLineItems` | 200, `lti.LineItemContainerMediaType` |
+| `POST` | `lineitem` | `CreateLineItem` | 201, `lti.LineItemMediaType`, `Location` |
+| `GET /{lineitem}` | `lineitem` or `lineitem.readonly` | `GetLineItem` | 200, `lti.LineItemMediaType` |
+| `PUT /{lineitem}` | `lineitem` | `UpdateLineItem` | 200, `lti.LineItemMediaType` |
+| `DELETE /{lineitem}` | `lineitem` | `DeleteLineItem` | 204 |
+| `POST /{lineitem}/scores` | `score` | `PostScore` | 204 |
+| `GET /{lineitem}/results` | `result.readonly` | `ListResults` | 200, `lti.ResultContainerMediaType` |
+
+The hooks know a line item by your own id for it, unique in its context, and go-lti answers with its URL, `cfg.LineItemURL`, as its `id`; a result's `scoreOf` is that URL and its `id` the results URL filtered to its user. go-lti checks the scope, the ids in the path, and what the tool sends: a line item needs a label and a `scoreMaximum` greater than 0, and a score needs a `userId`, a `timestamp` and known progress values, with a `scoreMaximum` greater than 0 for a `scoreGiven` of 0 or more. A `scoreGiven` above the maximum is accepted. Bodies over 64 KiB are refused with 413.
+
+```go
+handler, err := platform.NewHandler(cfg, platform.Handlers{
+	Register:         register,
+	AuthorizeService: authorizeService, // as for Names and Role Provisioning Services
+	ListLineItems: func(r *http.Request, client platform.ServiceClient, req platform.LineItemsRequest) (platform.LineItemsPage, error) {
+		// Check that client may use req.ContextID, then read a page of its line items, filtered by
+		// req.ResourceLinkID, req.ResourceID and req.Tag, starting at req.PageToken.
+		return platform.LineItemsPage{LineItems: items, NextPageToken: nextPageToken}, nil
+		// or platform.ErrContextNotFound (404)
+	},
+	PostScore: func(r *http.Request, client platform.ServiceClient, req platform.LineItemRequest, score lti.Score) error {
+		// Check that score.UserID is a learner in req.ContextID, then keep the score.
+		return nil
+		// or platform.ErrLineItemNotFound (404), or platform.ErrStaleScore (409) for a score whose
+		// Timestamp isn't after the one you have for the line item and user
+	},
+	// GetLineItem, CreateLineItem, UpdateLineItem, DeleteLineItem and ListResults likewise.
+})
+```
+
+Every answer has `Cache-Control: no-store`. Errors are OAuth 2.0's JSON error response, as for Names and Role Provisioning Services, and a token or scope refusal carries RFC 6750's challenge; a read of line items asks `AuthorizeService` for `lti.ScopeAGSLineItemReadOnly`, which `lti.ScopeAGSLineItem` also allows. A page is linked to the next as `rel="next"` while your hook returns a `NextPageToken`, keeping the tool's filters and `limit`.
 
 A Deep Linking `ltiResourceLink` can ask for a line item. go-lti checks it has a positive `scoreMaximum` and keeps it as `ContentItem.LineItem`, which decodes into an `lti.LineItem`.
 

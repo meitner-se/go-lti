@@ -27,8 +27,9 @@ type ServiceClient struct {
 }
 
 // authorizeService reads the request's Bearer token, has AuthorizeService check it, and refuses a
-// client whose token wasn't granted scope. It answers a request it refuses itself and returns false.
-func (e *endpoints) authorizeService(w http.ResponseWriter, r *http.Request, scope lti.Scope) (ServiceClient, bool) {
+// client whose token was granted neither scope nor any of also. It answers a request it refuses
+// itself and returns false.
+func (e *endpoints) authorizeService(w http.ResponseWriter, r *http.Request, scope lti.Scope, also ...lti.Scope) (ServiceClient, bool) {
 	token := bearerToken(r.Header.Get("Authorization"))
 	if token == "" {
 		e.report(r, errServiceTokenMissing)
@@ -43,7 +44,7 @@ func (e *endpoints) authorizeService(w http.ResponseWriter, r *http.Request, sco
 		err = errors.New("lti: AuthorizeService returned no client and no error")
 	}
 
-	if err == nil && !slices.Contains(client.Scopes, scope) {
+	if err == nil && !slices.ContainsFunc(client.Scopes, func(granted lti.Scope) bool { return granted == scope || slices.Contains(also, granted) }) {
 		err = errServiceScopeMissing
 	}
 
@@ -58,9 +59,17 @@ func (e *endpoints) authorizeService(w http.ResponseWriter, r *http.Request, sco
 
 // failService answers a service request that failed: a rejection with OAuth 2.0's error response
 // and its StatusCode, plus RFC 6750 §3's challenge for invalid_token and insufficient_scope; any
-// other error with a 500 that says nothing more. scope is the scope the service needs.
+// other error with a 500 that says nothing more. A body over its limit is a 413. scope is the scope
+// the service needs.
 func (e *endpoints) failService(w http.ResponseWriter, r *http.Request, scope lti.Scope, err error) {
 	e.report(r, err)
+
+	var tooLarge *http.MaxBytesError
+	if rejection, ok := lti.AsError(err); ok && errors.As(err, &tooLarge) {
+		writeErrorResponse(w, http.StatusRequestEntityTooLarge, rejection)
+
+		return
+	}
 
 	rejection, ok := lti.AsError(err)
 	if !ok || rejection.Code == lti.ErrorServerError {

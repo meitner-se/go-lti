@@ -13,12 +13,12 @@ import (
 	"github.com/meitner-se/go-lti/internal/urlcheck"
 )
 
-// ErrContextNotFound is what ListContextMembers returns, or wraps, for a context that doesn't
-// exist or that the tool may not read. The tool gets a 404 with OAuth 2.0's error response.
+// ErrContextNotFound is what ListContextMembers or a line item hook returns, or wraps, for a context
+// that doesn't exist or that the tool may not use. The tool gets a 404 with OAuth 2.0's error response.
 var ErrContextNotFound = lti.NewError(lti.ErrorInvalidRequest, "the context is unknown", nil)
 
-// errMembershipsLimit answers a memberships request whose limit isn't a positive integer.
-var errMembershipsLimit = lti.NewError(lti.ErrorInvalidRequest, "limit must be a positive integer", nil)
+// errLimit answers a service request whose limit isn't a positive integer.
+var errLimit = lti.NewError(lti.ErrorInvalidRequest, "limit must be a positive integer", nil)
 
 // MembershipsRequest is a tool's request for a page of a context's members (Names and Role
 // Provisioning Services 2.0 §2.4.1), as ListContextMembers gets it.
@@ -64,11 +64,18 @@ type MembershipLinks struct {
 
 // AddMembershipLinks adds links to h as Link headers. On an error nothing is added.
 func AddMembershipLinks(h http.Header, links MembershipLinks) error {
-	rels := []struct{ url, rel string }{{links.Next, "next"}, {links.Differences, "differences"}}
+	return addLinks(h, "membership", []headerLink{{links.Next, "next"}, {links.Differences, "differences"}})
+}
 
+// headerLink is a Link header's URL and relation.
+type headerLink struct{ url, rel string }
+
+// addLinks adds each link with a URL to h as a Link header, or fails, adding nothing, for a URL
+// that isn't an absolute https URL without spaces or angle brackets. what names the service.
+func addLinks(h http.Header, what string, rels []headerLink) error {
 	for _, link := range rels {
 		if link.url != "" && (!urlcheck.IsHTTPS(link.url) || strings.ContainsAny(link.url, "<> ")) {
-			return fmt.Errorf("lti: membership %s link must be an absolute https url without spaces or angle brackets", link.rel)
+			return fmt.Errorf("lti: %s %s link must be an absolute https url without spaces or angle brackets", what, link.rel)
 		}
 	}
 
@@ -104,16 +111,14 @@ func (e *endpoints) contextMemberships(w http.ResponseWriter, r *http.Request) {
 		ResourceLinkID: query.Get("rlid"),
 	}
 
-	if limit := query.Get("limit"); limit != "" {
-		n, err := strconv.Atoi(limit)
-		if err != nil || n < 1 {
-			e.failService(w, r, scope, errMembershipsLimit)
+	limit, ok := parseLimit(query.Get("limit"))
+	if !ok {
+		e.failService(w, r, scope, errLimit)
 
-			return
-		}
-
-		req.Limit = n
+		return
 	}
+
+	req.Limit = limit
 
 	page, err := e.handlers.ListContextMembers(r, client, req)
 	if errors.Is(err, ErrContextNotFound) {
@@ -154,23 +159,7 @@ func (e *endpoints) encodeMembershipsPage(h http.Header, req MembershipsRequest,
 
 	// A page's URL keeps the request's filters, so that every page lists the same members.
 	pageURL := func(token string) string {
-		query := url.Values{}
-
-		for name, value := range map[string]string{"role": string(req.Role), "rlid": req.ResourceLinkID, "page": token} {
-			if value != "" {
-				query.Set(name, value)
-			}
-		}
-
-		if req.Limit > 0 {
-			query.Set("limit", strconv.Itoa(req.Limit))
-		}
-
-		if len(query) == 0 {
-			return base
-		}
-
-		return base + "?" + query.Encode()
+		return withQuery(base, map[string]string{"role": string(req.Role), "rlid": req.ResourceLinkID, "limit": formatLimit(req.Limit), "page": token})
 	}
 
 	var links MembershipLinks
@@ -188,4 +177,41 @@ func (e *endpoints) encodeMembershipsPage(h http.Header, req MembershipsRequest,
 	}
 
 	return body, nil
+}
+
+// parseLimit reads a limit parameter: 0 when it is empty, else a positive integer.
+func parseLimit(value string) (int, bool) {
+	if value == "" {
+		return 0, true
+	}
+
+	n, err := strconv.Atoi(value)
+
+	return n, err == nil && n > 0
+}
+
+// formatLimit writes a limit parameter, or "" for none.
+func formatLimit(limit int) string {
+	if limit < 1 {
+		return ""
+	}
+
+	return strconv.Itoa(limit)
+}
+
+// withQuery returns base with each parameter that isn't empty in its query.
+func withQuery(base string, params map[string]string) string {
+	query := url.Values{}
+
+	for name, value := range params {
+		if value != "" {
+			query.Set(name, value)
+		}
+	}
+
+	if len(query) == 0 {
+		return base
+	}
+
+	return base + "?" + query.Encode()
 }

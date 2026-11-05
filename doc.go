@@ -8,8 +8,8 @@
 // Common.AGSEndpoint sends a tool the endpoint claim with its URLs and scopes.
 //
 // The platform side (its configuration, its record of each tool, launches, Deep Linking
-// verification, Dynamic Registration, the OpenID configuration and the Names and Role Provisioning
-// Services endpoint) lives in package platform.
+// verification, Dynamic Registration, the OpenID configuration, the Names and Role Provisioning
+// Services endpoint and the Assignment and Grade Services endpoints) lives in package platform.
 // Package jwks publishes and fetches keys, safehttp fetches tool-controlled URLs safely, and
 // ltitest has test doubles.
 //
