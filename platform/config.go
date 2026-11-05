@@ -36,7 +36,8 @@ type Config struct {
 const PathOpenIDConfiguration = "/.well-known/openid-configuration"
 
 // Paths are where the platform's endpoints are under its issuer, such as "/register". Each starts
-// with "/" and is unique, and each is required except ContextMemberships. Tools learn the URLs from
+// with "/" and is unique, and each is required except ContextMemberships and ContextLineItems, which
+// may share a prefix. Tools learn the URLs from
 // the OpenID configuration, a Dynamic Registration or a launch, and keep them once registered, so
 // a path must not change after tools have registered.
 type Paths struct {
@@ -49,6 +50,11 @@ type Paths struct {
 	// "/{context}/memberships" (see Config.ContextMembershipsURL). Empty when the platform offers
 	// none.
 	ContextMemberships string
+	// ContextLineItems is the prefix of each context's Assignment and Grade Services line items,
+	// such as "/contexts": a context's line item container is at the prefix plus
+	// "/{context}/lineitems" (see Config.LineItemsURL). It may be ContextMemberships. Empty when the
+	// platform offers none.
+	ContextLineItems string
 }
 
 // Endpoints are the platform's absolute https URLs.
@@ -93,11 +99,49 @@ func (c Config) ContextMembershipsURL(contextID string) (string, error) {
 		return "", errors.New("lti: config has no context memberships path")
 	}
 
-	if contextID == "" || contextID == "." || contextID == ".." {
+	if !isPathSegment(contextID) {
 		return "", errors.New(`lti: a context memberships url needs a context id other than "", "." or ".."`)
 	}
 
 	return strings.TrimSuffix(c.Issuer, "/") + c.Paths.ContextMemberships + "/" + url.PathEscape(contextID) + "/memberships", nil
+}
+
+// LineItemsURL returns the line item container of the context with contextID, the LineItems of a
+// launch's AGSEndpoint: the issuer plus Paths.ContextLineItems plus "/{context}/lineitems", with
+// contextID path-escaped. NewHandler serves it. It fails without Paths.ContextLineItems, and for a
+// contextID that is empty, "." or "..".
+func (c Config) LineItemsURL(contextID string) (string, error) {
+	if c.Paths.ContextLineItems == "" {
+		return "", errors.New("lti: config has no context line items path")
+	}
+
+	if !isPathSegment(contextID) {
+		return "", errors.New(`lti: a line items url needs a context id other than "", "." or ".."`)
+	}
+
+	return strings.TrimSuffix(c.Issuer, "/") + c.Paths.ContextLineItems + "/" + url.PathEscape(contextID) + "/lineitems", nil
+}
+
+// LineItemURL returns the URL of the line item with lineItemID in the context with contextID, which
+// is the line item's id and the LineItem of a launch's AGSEndpoint: LineItemsURL plus
+// "/{lineitem}", with lineItemID path-escaped. NewHandler serves it. It fails as LineItemsURL does,
+// and for a lineItemID that is empty, "." or "..".
+func (c Config) LineItemURL(contextID, lineItemID string) (string, error) {
+	lineItems, err := c.LineItemsURL(contextID)
+	if err != nil {
+		return "", err
+	}
+
+	if !isPathSegment(lineItemID) {
+		return "", errors.New(`lti: a line item url needs a line item id other than "", "." or ".."`)
+	}
+
+	return lineItems + "/" + url.PathEscape(lineItemID), nil
+}
+
+// isPathSegment reports whether id, path-escaped, can be a URL path's segment.
+func isPathSegment(id string) bool {
+	return id != "" && id != "." && id != ".."
 }
 
 // Product is the platform's product (LTI 1.3 §5.4.2).
@@ -137,7 +181,8 @@ func (c Config) Validate() error {
 
 // validate checks that each path starts with "/", is clean (no trailing slash, no "." or ".."
 // segments), has no query, fragment, braces or spaces, and differs from the others and from
-// PathOpenIDConfiguration. An empty ContextMemberships is left out.
+// PathOpenIDConfiguration. An empty ContextMemberships or ContextLineItems is left out, and the two
+// may be the same, but neither may be under the other, whose routes would overlap.
 func (p Paths) validate() error {
 	seen := map[string]string{PathOpenIDConfiguration: "the openid configuration"}
 
@@ -150,8 +195,14 @@ func (p Paths) validate() error {
 		{"registration", p.Registration, false},
 		{"deep link return", p.DeepLinkReturn, false},
 		{"context memberships", p.ContextMemberships, true},
+		{"context line items", p.ContextLineItems, true},
 	} {
 		if named.optional && named.path == "" {
+			continue
+		}
+
+		// The two services' routes differ after the context, so they can share a prefix.
+		if named.path == p.ContextMemberships && named.name == "context line items" {
 			continue
 		}
 
@@ -165,6 +216,10 @@ func (p Paths) validate() error {
 		}
 
 		seen[named.path] = named.name + " path"
+	}
+
+	if m, l := p.ContextMemberships, p.ContextLineItems; m != "" && l != "" && (strings.HasPrefix(m, l+"/") || strings.HasPrefix(l, m+"/")) {
+		return errors.New("lti: config context memberships and context line items paths must be the same or neither under the other")
 	}
 
 	return nil

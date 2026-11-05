@@ -264,6 +264,11 @@ func (d *dateTime) UnmarshalJSON(data []byte) error {
 	}
 
 	if err != nil {
+		// ISO 8601's basic offset, such as "+0000", is what Java's date formatters write by default.
+		t, err = time.Parse("2006-01-02T15:04:05.999999999-0700", *s)
+	}
+
+	if err != nil {
 		return fmt.Errorf("lti: %q is not an ISO 8601 date and time with a time zone", *s)
 	}
 

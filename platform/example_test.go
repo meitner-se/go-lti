@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"sync"
 	"time"
 
@@ -323,6 +324,136 @@ func ExampleNewHandler_contextMemberships() {
 	// 200 application/vnd.ims.lti-nrps.v2.membershipcontainer+json
 	// <https://lms.example.com/lti/contexts/course-1/memberships?page=user-2&role=Learner>; rel="next"
 	// {"id":"https://lms.example.com/lti/contexts/course-1/memberships?role=Learner","context":{"id":"course-1"},"members":[{"status":"Active","user_id":"user-1","roles":["http://purl.imsglobal.org/vocab/lis/v2/membership#Instructor"]}]}
+}
+
+// A tool launched with an AGS endpoint claim manages line items and posts scores with its access
+// token (Assignment and Grade Services 2.0). NewHandler serves the routes: it validates the token
+// with AuthorizeService, checks that it was granted the route's scope, checks the score, and hands
+// it to PostScore. The hooks know a line item by the platform's own id; go-lti makes its URL.
+func ExampleNewHandler_assignmentAndGradeServices() {
+	cfg := exampleConfig
+	cfg.Paths.ContextLineItems = "/contexts"
+
+	// The launch tells the tool where the context's line items are, and the link's own line item.
+	lineItemsURL, err := cfg.LineItemsURL("course-1")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	lineItemURL, err := cfg.LineItemURL("course-1", "quiz-1")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	_ = &lti.ResourceLinkRequest{
+		Common: lti.Common{
+			DeploymentID: "deployment-1",
+			Subject:      "user-1",
+			Context:      &lti.LaunchContext{ID: "course-1"},
+			AGSEndpoint: &lti.AGSEndpoint{
+				Scopes:    []lti.Scope{lti.ScopeAGSLineItem, lti.ScopeAGSResultReadOnly, lti.ScopeAGSScore},
+				LineItems: lineItemsURL,
+				LineItem:  lineItemURL,
+			},
+		},
+		ResourceLink: lti.ResourceLink{ID: "link-1"},
+	}
+
+	// The platform's own line items of each context, and the last score of each user.
+	lineItems := map[string][]lti.LineItem{"course-1": {{ID: "quiz-1", Label: "Quiz 1", ScoreMaximum: 10, ResourceLinkID: "link-1"}}}
+	scores := map[string]lti.Score{}
+
+	find := func(req platform.LineItemRequest) (lti.LineItem, error) {
+		for _, item := range lineItems[req.ContextID] {
+			if item.ID == req.LineItemID {
+				return item, nil
+			}
+		}
+
+		return lti.LineItem{}, platform.ErrLineItemNotFound
+	}
+
+	handler, err := platform.NewHandler(cfg, platform.Handlers{
+		Register: func(context.Context, string, *platform.Registration) (platform.RegistrationGrant, error) {
+			return platform.RegistrationGrant{}, lti.NewError(lti.ErrorInvalidToken, "registration is closed", nil)
+		},
+		AuthorizeService: func(_ *http.Request, token string, _ lti.Scope) (platform.ServiceClient, error) {
+			if token != "access-token-1" {
+				return platform.ServiceClient{}, lti.NewError(lti.ErrorInvalidToken, "the access token is unknown or expired", nil)
+			}
+
+			return platform.ServiceClient{ClientID: "client-1", Scopes: []lti.Scope{lti.ScopeAGSLineItem, lti.ScopeAGSScore}}, nil
+		},
+		// Each hook checks that client may use the context and sees only client's own line items.
+		ListLineItems: func(_ *http.Request, _ platform.ServiceClient, req platform.LineItemsRequest) (platform.LineItemsPage, error) {
+			return platform.LineItemsPage{LineItems: lineItems[req.ContextID]}, nil
+		},
+		GetLineItem: func(_ *http.Request, _ platform.ServiceClient, req platform.LineItemRequest) (lti.LineItem, error) {
+			return find(req)
+		},
+		CreateLineItem: func(_ *http.Request, _ platform.ServiceClient, contextID string, item lti.LineItem) (lti.LineItem, error) {
+			item.ID = fmt.Sprintf("item-%d", len(lineItems[contextID])+1)
+			lineItems[contextID] = append(lineItems[contextID], item)
+
+			return item, nil
+		},
+		UpdateLineItem: func(_ *http.Request, _ platform.ServiceClient, _ platform.LineItemRequest, item lti.LineItem) (lti.LineItem, error) {
+			return item, nil
+		},
+		DeleteLineItem: func(*http.Request, platform.ServiceClient, platform.LineItemRequest) error {
+			return nil
+		},
+		PostScore: func(_ *http.Request, _ platform.ServiceClient, req platform.LineItemRequest, score lti.Score) error {
+			if _, err := find(req); err != nil {
+				return err
+			}
+
+			key := req.ContextID + "/" + req.LineItemID + "/" + score.UserID
+			if last, ok := scores[key]; ok && !score.Timestamp.After(last.Timestamp) {
+				return platform.ErrStaleScore
+			}
+
+			scores[key] = score
+
+			return nil
+		},
+		ListResults: func(*http.Request, platform.ServiceClient, platform.ResultsRequest) (platform.ResultsPage, error) {
+			return platform.ResultsPage{}, nil
+		},
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	score := `{"userId": "user-1", "scoreGiven": 8, "scoreMaximum": 10, "timestamp": "2026-11-05T10:00:00.000Z",
+		"activityProgress": "Completed", "gradingProgress": "FullyGraded"}`
+
+	for range 2 {
+		req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, lineItemURL+"/scores", strings.NewReader(score))
+		req.Header.Set("Content-Type", lti.ScoreMediaType)
+		req.Header.Set("Authorization", "Bearer access-token-1")
+
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, req)
+
+		fmt.Println(strings.TrimSpace(fmt.Sprintf("%d %s", w.Code, w.Body.String())))
+	}
+
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, lineItemsURL, http.NoBody)
+	req.Header.Set("Accept", lti.LineItemContainerMediaType)
+	req.Header.Set("Authorization", "Bearer access-token-1")
+
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	fmt.Println(w.Code, w.Header().Get("Content-Type"))
+	fmt.Print(w.Body.String())
+
+	// Output:
+	// 204
+	// 409 {"error":"invalid_request","error_description":"a score with the same or a later timestamp was already received"}
+	// 200 application/vnd.ims.lis.v2.lineitemcontainer+json
+	// [{"id":"https://lms.example.com/lti/contexts/course-1/lineitems/quiz-1","scoreMaximum":10,"label":"Quiz 1","resourceLinkId":"link-1"}]
 }
 
 // A platform with its own HTTP handling answers with a membership container itself, and links the

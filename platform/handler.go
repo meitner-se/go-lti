@@ -84,8 +84,9 @@ type Handlers struct {
 	// with the scopes it was granted. token is the request's Bearer token (RFC 6750 §2.1); a request
 	// without one is answered 401 before AuthorizeService is called. scope is the scope the service
 	// needs, such as lti.ScopeNRPSMembershipRead: a client whose Scopes don't include it is refused
-	// with a 403, so AuthorizeService needn't check it. Set it with the services that use it, and
-	// only then.
+	// with a 403, so AuthorizeService needn't check it. A read of line items, which
+	// lti.ScopeAGSLineItem allows too, gets lti.ScopeAGSLineItemReadOnly. Set it with the services
+	// that use it, and only then.
 	//
 	// Return an *lti.Error with lti.ErrorInvalidToken for a token that is unknown, expired or
 	// revoked; the tool gets a 401 with RFC 6750 §3's challenge. One with
@@ -103,6 +104,43 @@ type Handlers struct {
 	// error that is or wraps ErrContextNotFound for a context that doesn't exist or that client may
 	// not read; the tool gets a 404. Any other error is answered as for AuthorizeService.
 	ListContextMembers func(r *http.Request, client ServiceClient, req MembershipsRequest) (MembershipsPage, error)
+	// ListLineItems, GetLineItem, CreateLineItem, UpdateLineItem, DeleteLineItem, PostScore and
+	// ListResults serve Assignment and Grade Services 2.0 for the context in their request. Set
+	// Paths.ContextLineItems and all of them together, with AuthorizeService, to serve it.
+	//
+	// A line item a hook returns has its ID the platform's own id for it, unique in its context,
+	// and go-lti answers with Config.LineItemURL as the id; a line item a hook gets has no ID.
+	// A line item belongs to one client: the one that created it, or whose link the platform made
+	// it for, such as from a Deep Linking lineItem. Every hook, reads included, sees only client's
+	// own line items and their results, never another tool's. Check that client may use the
+	// context, such as by having a deployment in it, and that the line item is client's, and return
+	// an error that is or wraps ErrContextNotFound or ErrLineItemNotFound otherwise; the tool gets
+	// a 404. Any other error is answered as for AuthorizeService.
+	//
+	// ListLineItems returns a page of client's line items in the context, filtered by the request,
+	// for a client granted lti.ScopeAGSLineItem or lti.ScopeAGSLineItemReadOnly.
+	ListLineItems func(r *http.Request, client ServiceClient, req LineItemsRequest) (LineItemsPage, error)
+	// GetLineItem returns one line item, for a client granted lti.ScopeAGSLineItem or
+	// lti.ScopeAGSLineItemReadOnly.
+	GetLineItem func(r *http.Request, client ServiceClient, req LineItemRequest) (lti.LineItem, error)
+	// CreateLineItem saves a new line item in the context and returns it with its ID, for a
+	// client granted lti.ScopeAGSLineItem. go-lti has checked that item has a label and a
+	// ScoreMaximum greater than 0; check that a ResourceLinkID is one of the client's links.
+	CreateLineItem func(r *http.Request, client ServiceClient, contextID string, item lti.LineItem) (lti.LineItem, error)
+	// UpdateLineItem replaces a line item with item, checked as for CreateLineItem, and returns it
+	// as saved, for a client granted lti.ScopeAGSLineItem.
+	UpdateLineItem func(r *http.Request, client ServiceClient, req LineItemRequest, item lti.LineItem) (lti.LineItem, error)
+	// DeleteLineItem removes a line item and its results, for a client granted lti.ScopeAGSLineItem.
+	DeleteLineItem func(r *http.Request, client ServiceClient, req LineItemRequest) error
+	// PostScore saves a user's score for a line item, for a client granted lti.ScopeAGSScore.
+	// go-lti has checked that score has a UserID, a Timestamp and known progress values, and a
+	// ScoreMaximum greater than 0 with a ScoreGiven of 0 or more. Return an error that is or wraps
+	// ErrStaleScore for a score whose Timestamp isn't after the one the platform has for the line
+	// item and user; the tool gets a 409.
+	PostScore func(r *http.Request, client ServiceClient, req LineItemRequest, score lti.Score) error
+	// ListResults returns a page of a line item's results, filtered by the request, for a client
+	// granted lti.ScopeAGSResultReadOnly.
+	ListResults func(r *http.Request, client ServiceClient, req ResultsRequest) (ResultsPage, error)
 	// Logger, when set, logs every error a tool or browser is answered with: a rejection at Warn
 	// with its code, any other error at Error.
 	Logger *slog.Logger
@@ -127,14 +165,20 @@ type Handlers struct {
 //     (Names and Role Provisioning Services 2.0 §2.4), from ListContextMembers, for a tool whose
 //     access token AuthorizeService finds granted lti.ScopeNRPSMembershipRead. Served with
 //     Paths.ContextMemberships and ListContextMembers, which need AuthorizeService.
+//   - Paths.ContextLineItems plus "/{context}/lineitems": Assignment and Grade Services 2.0, for a
+//     tool whose access token AuthorizeService finds granted the route's scope. GET answers a page
+//     of line items and POST creates one; GET, PUT and DELETE "/{lineitem}" read, replace and
+//     remove one; POST "/{lineitem}/scores" saves a score and GET "/{lineitem}/results" answers a
+//     page of results. Served with Paths.ContextLineItems and the seven line item hooks, which need
+//     AuthorizeService.
 //
 // Mount it to receive every request under the issuer's path, with the path unchanged. Any other
 // path is a 404 and any other method a 405. An error page sent to a browser is plain text with
 // Cache-Control: no-store and a Content-Security-Policy that allows nothing. It fails when cfg
 // can't make an OpenID configuration, h has no Register, h has only one of Keys and Launch, h has
 // only some of the Deep Linking fields, only one of Paths.ContextMemberships and ListContextMembers
-// is set, a service is served without AuthorizeService, or AuthorizeService is set without any
-// service that uses it.
+// is set, only some of Paths.ContextLineItems and the line item hooks are set, a service is served
+// without AuthorizeService, or AuthorizeService is set without any service that uses it.
 func NewHandler(cfg Config, h Handlers) (http.Handler, error) {
 	if h.Register == nil {
 		return nil, errors.New("lti: the handler needs a Register function")
@@ -153,8 +197,16 @@ func NewHandler(cfg Config, h Handlers) (http.Handler, error) {
 		return nil, errors.New("lti: the handler needs both Paths.ContextMemberships and ListContextMembers to serve context memberships, or neither")
 	}
 
+	lineItems := []bool{
+		cfg.Paths.ContextLineItems != "", h.ListLineItems != nil, h.GetLineItem != nil, h.CreateLineItem != nil,
+		h.UpdateLineItem != nil, h.DeleteLineItem != nil, h.PostScore != nil, h.ListResults != nil,
+	}
+	if slices.Contains(lineItems, true) && slices.Contains(lineItems, false) {
+		return nil, errors.New("lti: the handler needs all of Paths.ContextLineItems, ListLineItems, GetLineItem, CreateLineItem, UpdateLineItem, DeleteLineItem, PostScore and ListResults to serve assignment and grade services, or none")
+	}
+
 	// Each LTI service endpoint the handler serves, all of which AuthorizeService authorizes.
-	services := []bool{h.ListContextMembers != nil}
+	services := []bool{h.ListContextMembers != nil, h.ListLineItems != nil}
 	if slices.Contains(services, true) && h.AuthorizeService == nil {
 		return nil, errors.New("lti: the handler needs AuthorizeService to serve LTI services")
 	}
@@ -211,6 +263,17 @@ func NewHandler(cfg Config, h Handlers) (http.Handler, error) {
 
 	if h.ListContextMembers != nil {
 		mux.HandleFunc("GET "+issuer.Path+cfg.Paths.ContextMemberships+"/{context}/memberships", e.contextMemberships)
+	}
+
+	if h.ListLineItems != nil {
+		lineItems := issuer.Path + cfg.Paths.ContextLineItems + "/{context}/lineitems"
+		mux.HandleFunc("GET "+lineItems, e.listLineItems)
+		mux.HandleFunc("POST "+lineItems, e.createLineItem)
+		mux.HandleFunc("GET "+lineItems+"/{lineitem}", e.getLineItem)
+		mux.HandleFunc("PUT "+lineItems+"/{lineitem}", e.updateLineItem)
+		mux.HandleFunc("DELETE "+lineItems+"/{lineitem}", e.deleteLineItem)
+		mux.HandleFunc("POST "+lineItems+"/{lineitem}/scores", e.postScore)
+		mux.HandleFunc("GET "+lineItems+"/{lineitem}/results", e.listResults)
 	}
 
 	return mux, nil
