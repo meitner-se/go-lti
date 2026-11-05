@@ -147,14 +147,17 @@ func TestScore_UnmarshalJSON_Timestamps(t *testing.T) {
 
 	want := time.Date(2017, 4, 16, 18, 54, 36, 736_000_000, time.UTC)
 
-	// AGS 2.0 §3.4.9.1 lists these three forms as valid.
-	for _, timestamp := range []string{"2017-04-16T18:54:36.736+00:00", "2017-04-16T18:54:36.736Z", "2017-04-16T18:54:36.736+00", "2017-04-16T20:54:36.736+02"} {
+	// AGS 2.0 §3.4.9.1 lists the first three forms as valid; tools also send ISO 8601's basic offset.
+	for _, timestamp := range []string{
+		"2017-04-16T18:54:36.736+00:00", "2017-04-16T18:54:36.736Z", "2017-04-16T18:54:36.736+00", "2017-04-16T20:54:36.736+02",
+		"2017-04-16T18:54:36.736+0000", "2017-04-16T20:54:36.736+0200", "2017-04-16T13:24:36.736-0530",
+	} {
 		var score lti.Score
 		require.NoError(t, json.Unmarshal([]byte(`{"userId": "1", "timestamp": "`+timestamp+`"}`), &score), timestamp)
 		assert.True(t, want.Equal(score.Timestamp), timestamp)
 	}
 
-	for _, timestamp := range []string{`"2017-04-16T18:54:36.736"`, `"2017-04-16"`, `"yesterday"`, `1492368876`} {
+	for _, timestamp := range []string{`"2017-04-16T18:54:36.736"`, `"2017-04-16T18:54:36.736+000"`, `"2017-04-16"`, `"yesterday"`, `1492368876`} {
 		var score lti.Score
 		require.Error(t, json.Unmarshal([]byte(`{"userId": "1", "timestamp": `+timestamp+`}`), &score), timestamp)
 	}
