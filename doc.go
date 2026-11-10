@@ -7,9 +7,14 @@
 // LineItem, Score and Result are the bodies of Assignment and Grade Services 2.0;
 // Common.AGSEndpoint sends a tool the endpoint claim with its URLs and scopes.
 //
+// NoticeHandlers and NoticeHandlerRegistration are the bodies of the LTI Platform Notification
+// Service's registration endpoint, Notice is the notice claim of a notice JWT and NoticeEnvelope is
+// what the platform posts to a handler; Common.PlatformNotificationService sends a tool the claim.
+//
 // The platform side (its configuration, its record of each tool, launches, Deep Linking
 // verification, Dynamic Registration, the OpenID configuration, the Names and Role Provisioning
-// Services endpoint and the Assignment and Grade Services endpoints) lives in package platform.
+// Services endpoint, the Assignment and Grade Services endpoints, and the Platform Notification
+// Service endpoint and notices) lives in package platform.
 // Package jwks publishes and fetches keys, safehttp fetches tool-controlled URLs safely, and
 // ltitest has test doubles.
 //

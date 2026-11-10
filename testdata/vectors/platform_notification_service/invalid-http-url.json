@@ -1,0 +1,11 @@
+{
+  "description": "The registration endpoint must be an https URL.",
+  "message_type": "LtiResourceLinkRequest",
+  "platform_notification_service": {
+    "platform_notification_service_url": "http://platform.example.com/lti/notice-handlers/deployment-1",
+    "notice_types_supported": [
+      "LtiContextCopyNotice"
+    ]
+  },
+  "valid": false
+}

@@ -1,0 +1,30 @@
+{
+  "description": "A handler may be on the host of any of the tool's redirect URIs, whatever its port, path or case.",
+  "notice_types": [
+    "LtiContextCopyNotice",
+    "LtiAssetProcessorSubmissionNotice"
+  ],
+  "redirect_uris": [
+    "https://tool.example.com/launch",
+    "https://Assets.Example.org:8443/lti/launch"
+  ],
+  "domains": [
+    "tool.example.com",
+    "secondary.example.net"
+  ],
+  "scopes": [
+    "https://purl.imsglobal.org/spec/lti/scope/noticehandlers"
+  ],
+  "registered": [],
+  "method": "PUT",
+  "body": {
+    "notice_type": "LtiAssetProcessorSubmissionNotice",
+    "handler": "https://assets.example.org/notices?kind=submission",
+    "max_batch_size": 20
+  },
+  "expect_status": 200,
+  "expect_body": {
+    "notice_type": "LtiAssetProcessorSubmissionNotice",
+    "handler": "https://assets.example.org/notices?kind=submission"
+  }
+}

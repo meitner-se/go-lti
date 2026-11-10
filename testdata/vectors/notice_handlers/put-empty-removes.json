@@ -1,0 +1,34 @@
+{
+  "description": "An empty handler removes the type's handler.",
+  "notice_types": [
+    "LtiContextCopyNotice",
+    "LtiAssetProcessorSubmissionNotice"
+  ],
+  "redirect_uris": [
+    "https://tool.example.com/launch",
+    "https://Assets.Example.org:8443/lti/launch"
+  ],
+  "domains": [
+    "tool.example.com",
+    "secondary.example.net"
+  ],
+  "scopes": [
+    "https://purl.imsglobal.org/spec/lti/scope/noticehandlers"
+  ],
+  "registered": [
+    {
+      "notice_type": "LtiContextCopyNotice",
+      "handler": "https://tool.example.com/notices"
+    }
+  ],
+  "method": "PUT",
+  "body": {
+    "notice_type": "LtiContextCopyNotice",
+    "handler": ""
+  },
+  "expect_status": 200,
+  "expect_body": {
+    "notice_type": "LtiContextCopyNotice",
+    "handler": ""
+  }
+}

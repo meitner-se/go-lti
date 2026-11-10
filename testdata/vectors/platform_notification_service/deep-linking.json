@@ -1,0 +1,23 @@
+{
+  "description": "A Deep Linking request carries the claim too.",
+  "message_type": "LtiDeepLinkingRequest",
+  "platform_notification_service": {
+    "platform_notification_service_url": "https://platform.example.com/lti/notice-handlers/deployment-1",
+    "notice_types_supported": [
+      "LtiContextCopyNotice"
+    ]
+  },
+  "valid": true,
+  "expect_claim": {
+    "platform_notification_service_url": "https://platform.example.com/lti/notice-handlers/deployment-1",
+    "service_versions": [
+      "1.0"
+    ],
+    "scope": [
+      "https://purl.imsglobal.org/spec/lti/scope/noticehandlers"
+    ],
+    "notice_types_supported": [
+      "LtiContextCopyNotice"
+    ]
+  }
+}

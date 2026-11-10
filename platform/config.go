@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/url"
 	"path"
+	"slices"
 	"strings"
 
 	"github.com/meitner-se/go-lti"
@@ -29,6 +30,11 @@ type Config struct {
 	Scopes []lti.Scope
 	// Variables are the substitution variables the platform offers in custom parameters.
 	Variables []lti.Variable
+	// NoticeTypes are the notice types the platform sends with the LTI Platform Notification
+	// Service, named Lti…Notice, such as LtiAssetProcessorSubmissionNotice, in the order a tool
+	// sees them. A tool may register a handler only for one of them. The OpenID configuration lists
+	// them whenever the platform offers the service, as an empty array when there are none.
+	NoticeTypes []lti.NoticeType
 }
 
 // PathOpenIDConfiguration is where the platform's OpenID configuration is under its issuer. OpenID
@@ -36,8 +42,8 @@ type Config struct {
 const PathOpenIDConfiguration = "/.well-known/openid-configuration"
 
 // Paths are where the platform's endpoints are under its issuer, such as "/register". Each starts
-// with "/" and is unique, and each is required except ContextMemberships and ContextLineItems, which
-// may share a prefix. Tools learn the URLs from
+// with "/" and is unique, and each is required except ContextMemberships, ContextLineItems and
+// NoticeHandlers; the first two may share a prefix. Tools learn the URLs from
 // the OpenID configuration, a Dynamic Registration or a launch, and keep them once registered, so
 // a path must not change after tools have registered.
 type Paths struct {
@@ -55,6 +61,10 @@ type Paths struct {
 	// "/{context}/lineitems" (see Config.LineItemsURL). It may be ContextMemberships. Empty when the
 	// platform offers none.
 	ContextLineItems string
+	// NoticeHandlers is the prefix of each deployment's LTI Platform Notification Service endpoint,
+	// such as "/notice-handlers": a deployment's notice handlers are at the prefix plus
+	// "/{deployment}" (see Config.NoticeHandlersURL). Empty when the platform offers none.
+	NoticeHandlers string
 }
 
 // Endpoints are the platform's absolute https URLs.
@@ -139,6 +149,34 @@ func (c Config) LineItemURL(contextID, lineItemID string) (string, error) {
 	return lineItems + "/" + url.PathEscape(lineItemID), nil
 }
 
+// NoticeHandlersURL returns where a tool reads and replaces its notice handlers for the deployment
+// with deploymentID, the URL of the Platform Notification Service claim: the issuer plus
+// Paths.NoticeHandlers plus "/{deployment}", with deploymentID path-escaped. NewHandler serves it.
+// It fails without Paths.NoticeHandlers, and for a deploymentID that is empty, "." or "..".
+func (c Config) NoticeHandlersURL(deploymentID string) (string, error) {
+	if c.Paths.NoticeHandlers == "" {
+		return "", errors.New("lti: config has no notice handlers path")
+	}
+
+	if !isPathSegment(deploymentID) {
+		return "", errors.New(`lti: a notice handlers url needs a deployment id other than "", "." or ".."`)
+	}
+
+	return strings.TrimSuffix(c.Issuer, "/") + c.Paths.NoticeHandlers + "/" + url.PathEscape(deploymentID), nil
+}
+
+// PlatformNotificationService returns the Platform Notification Service claim for a launch in the
+// deployment with deploymentID, the PlatformNotificationService of its lti.Common: the
+// deployment's NoticeHandlersURL and the platform's NoticeTypes. It fails as NoticeHandlersURL does.
+func (c Config) PlatformNotificationService(deploymentID string) (*lti.PlatformNotificationService, error) {
+	handlers, err := c.NoticeHandlersURL(deploymentID)
+	if err != nil {
+		return nil, err
+	}
+
+	return &lti.PlatformNotificationService{URL: handlers, NoticeTypesSupported: slices.Clone(c.NoticeTypes)}, nil
+}
+
 // isPathSegment reports whether id, path-escaped, can be a URL path's segment.
 func isPathSegment(id string) bool {
 	return id != "" && id != "." && id != ".."
@@ -181,8 +219,9 @@ func (c Config) Validate() error {
 
 // validate checks that each path starts with "/", is clean (no trailing slash, no "." or ".."
 // segments), has no query, fragment, braces or spaces, and differs from the others and from
-// PathOpenIDConfiguration. An empty ContextMemberships or ContextLineItems is left out, and the two
-// may be the same, but neither may be under the other, whose routes would overlap.
+// PathOpenIDConfiguration. An empty ContextMemberships, ContextLineItems or NoticeHandlers is left
+// out. ContextMemberships and ContextLineItems may be the same, but no two of the three prefixes
+// may be one under the other, whose routes would overlap.
 func (p Paths) validate() error {
 	seen := map[string]string{PathOpenIDConfiguration: "the openid configuration"}
 
@@ -196,6 +235,7 @@ func (p Paths) validate() error {
 		{"deep link return", p.DeepLinkReturn, false},
 		{"context memberships", p.ContextMemberships, true},
 		{"context line items", p.ContextLineItems, true},
+		{"notice handlers", p.NoticeHandlers, true},
 	} {
 		if named.optional && named.path == "" {
 			continue
@@ -222,6 +262,12 @@ func (p Paths) validate() error {
 		return errors.New("lti: config context memberships and context line items paths must be the same or neither under the other")
 	}
 
+	for _, prefix := range []string{p.ContextMemberships, p.ContextLineItems} {
+		if n := p.NoticeHandlers; n != "" && prefix != "" && (strings.HasPrefix(n, prefix+"/") || strings.HasPrefix(prefix, n+"/")) {
+			return errors.New("lti: config notice handlers path must not be under a context path, nor a context path under it")
+		}
+	}
+
 	return nil
 }
 
@@ -237,7 +283,8 @@ type Tool struct {
 	TargetLinkURI string
 	// JWKSURI is where the tool publishes its public keys.
 	JWKSURI string
-	// Domains are the tool's domain and secondary domains. OnToolDomains checks a URL against them;
-	// Verify doesn't, since Deep Linking content may live anywhere.
+	// Domains are the tool's domain, first, and its secondary domains, as Registration.Tool sets
+	// them. OnToolDomains checks a URL against them; Verify doesn't, since Deep Linking content may
+	// live anywhere.
 	Domains []string
 }

@@ -386,3 +386,176 @@ func TestLauncher_AGSEndpoint_Vectors(t *testing.T) {
 		})
 	}
 }
+
+//nolint:tagliatelle // the vector files are shared with other languages and use snake_case
+type platformNotificationServiceVector struct {
+	Description                 string                           `json:"description"`
+	MessageType                 lti.MessageType                  `json:"message_type"`
+	PlatformNotificationService *lti.PlatformNotificationService `json:"platform_notification_service"`
+	Valid                       bool                             `json:"valid"`
+	ExpectClaim                 json.RawMessage                  `json:"expect_claim"`
+}
+
+func TestLauncher_PlatformNotificationService_Vectors(t *testing.T) {
+	t.Parallel()
+
+	launcher := createTestLauncher(t, ltitest.NewSigningKey(t))
+
+	for name, v := range loadVectors[platformNotificationServiceVector](t, "platform_notification_service") {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			common := lti.Common{
+				DeploymentID:                "deployment-1",
+				Subject:                     "3f2a8c1e-7d4b-4e8f-9a6c-1b2d3e4f5a6b",
+				PlatformNotificationService: v.PlatformNotificationService,
+			}
+
+			var msg lti.Message
+
+			switch v.MessageType {
+			case lti.MessageTypeResourceLinkRequest:
+				msg = &lti.ResourceLinkRequest{Common: common, ResourceLink: lti.ResourceLink{ID: "link-1"}}
+			case lti.MessageTypeDeepLinkingRequest:
+				msg = &lti.DeepLinkingRequest{Common: common, Settings: createTestDeepLinkingSettings()}
+			default:
+				t.Fatalf("unknown message_type %q", v.MessageType)
+			}
+
+			claims, err := launcher.idTokenClaims(createTestTool(), "nonce-1", msg, testNow)
+			if !v.Valid {
+				require.Error(t, err, v.Description)
+
+				return
+			}
+
+			require.NoError(t, err, v.Description)
+
+			claim, ok := claims[lti.ClaimPlatformNotificationService]
+			if len(v.ExpectClaim) == 0 || string(v.ExpectClaim) == "null" {
+				assert.False(t, ok, v.Description)
+
+				return
+			}
+
+			require.True(t, ok, v.Description)
+
+			body, err := json.Marshal(claim)
+			require.NoError(t, err)
+			assert.JSONEq(t, string(v.ExpectClaim), string(body), v.Description)
+		})
+	}
+}
+
+//nolint:tagliatelle // the vector files are shared with other languages and use snake_case
+type noticeHandlersVector struct {
+	Description      string              `json:"description"`
+	NoticeTypes      []lti.NoticeType    `json:"notice_types"`
+	RedirectURIs     []string            `json:"redirect_uris"`
+	Domains          []string            `json:"domains"`
+	Scopes           []lti.Scope         `json:"scopes"`
+	Registered       []lti.NoticeHandler `json:"registered"`
+	Method           string              `json:"method"`
+	Body             json.RawMessage     `json:"body"`
+	ExpectStatus     int                 `json:"expect_status"`
+	ExpectBody       json.RawMessage     `json:"expect_body"`
+	ErrorCode        lti.ErrorCode       `json:"error_code"`
+	ErrorDescription string              `json:"error_description"`
+}
+
+func TestNewHandler_NoticeHandlers_Vectors(t *testing.T) {
+	t.Parallel()
+
+	for name, v := range loadVectors[noticeHandlersVector](t, "notice_handlers") {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			tool := createTestTool()
+			tool.RedirectURIs = v.RedirectURIs
+			tool.Domains = v.Domains
+
+			s := newNoticeHandlersServer()
+			s.tokens["token-vector"] = v.Scopes
+			s.deployments["deployment-1"] = &DeploymentNoticeHandlers{Tool: tool, Handlers: v.Registered}
+
+			cfg := createNoticeHandlersTestConfig()
+			cfg.NoticeTypes = v.NoticeTypes
+
+			handler, err := NewHandler(cfg, s.handlers())
+			require.NoError(t, err)
+
+			w := callAGS(t, handler, v.Method, noticeHandlerURL, "token-vector", string(v.Body))
+			require.Equal(t, v.ExpectStatus, w.Code, v.Description+": "+w.Body.String())
+
+			if v.ErrorCode != "" {
+				requireAGSError(t, w, v.ExpectStatus, v.ErrorCode, v.ErrorDescription)
+				assert.Empty(t, s.registrations, v.Description)
+
+				return
+			}
+
+			assert.JSONEq(t, string(v.ExpectBody), w.Body.String(), v.Description)
+		})
+	}
+}
+
+//nolint:tagliatelle // the vector files are shared with other languages and use snake_case
+type noticeVector struct {
+	Description string `json:"description"`
+	Notice      struct {
+		DeploymentID string             `json:"deployment_id"`
+		ID           string             `json:"id"`
+		Type         lti.NoticeType     `json:"type"`
+		Timestamp    *time.Time         `json:"timestamp"`
+		Subject      string             `json:"sub"`
+		Context      *lti.LaunchContext `json:"context"`
+		Custom       map[string]string  `json:"custom"`
+	} `json:"notice"`
+	Valid        bool           `json:"valid"`
+	ExpectClaims map[string]any `json:"expect_claims"`
+}
+
+func TestLauncher_SignNotice_Vectors(t *testing.T) {
+	t.Parallel()
+
+	launcher := createTestLauncher(t, ltitest.NewSigningKey(t))
+
+	for name, v := range loadVectors[noticeVector](t, "notice") {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			notice := Notice{
+				DeploymentID: v.Notice.DeploymentID,
+				ID:           v.Notice.ID,
+				Type:         v.Notice.Type,
+				Subject:      v.Notice.Subject,
+				Context:      v.Notice.Context,
+				Custom:       v.Notice.Custom,
+			}
+
+			if v.Notice.Timestamp != nil {
+				notice.Timestamp = *v.Notice.Timestamp
+			}
+
+			claims, err := launcher.noticeClaims(createTestTool(), notice, "nonce-1", testNow)
+			if !v.Valid {
+				require.Error(t, err, v.Description)
+
+				return
+			}
+
+			require.NoError(t, err, v.Description)
+
+			// iat, exp and nonce are new on every signature.
+			assert.Equal(t, testNow.Unix(), claims["iat"], v.Description)
+			assert.Equal(t, testNow.Add(NoticeTTL).Unix(), claims["exp"], v.Description)
+			assert.Equal(t, "nonce-1", claims["nonce"], v.Description)
+
+			delete(claims, "iat")
+			delete(claims, "exp")
+			delete(claims, "nonce")
+
+			assert.JSONEq(t, string(mustJSON(t, v.ExpectClaims)), claimsJSON(t, claims), v.Description)
+		})
+	}
+}

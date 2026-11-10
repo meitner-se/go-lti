@@ -1,0 +1,7 @@
+{
+  "description": "Without the service there is no claim.",
+  "message_type": "LtiResourceLinkRequest",
+  "platform_notification_service": null,
+  "valid": true,
+  "expect_claim": null
+}

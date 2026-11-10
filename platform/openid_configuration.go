@@ -34,6 +34,10 @@ type PlatformConfiguration struct {
 	Version           string             `json:"version"`
 	MessagesSupported []SupportedMessage `json:"messages_supported"`
 	Variables         []lti.Variable     `json:"variables,omitempty"`
+	// NoticeTypesSupported are the notice types the platform sends with the LTI Platform
+	// Notification Service: an empty array when it offers the service with none, and left out (nil)
+	// when it doesn't offer the service.
+	NoticeTypesSupported []lti.NoticeType `json:"notice_types_supported,omitzero"`
 }
 
 // SupportedMessage is a message type the platform sends.
@@ -65,6 +69,12 @@ func (c Config) OpenIDConfiguration() (OpenIDConfiguration, error) {
 		scopes = append(scopes, string(scope))
 	}
 
+	// The Platform Notification Service lists its notice types whenever it is offered, even none.
+	var noticeTypes []lti.NoticeType
+	if c.Paths.NoticeHandlers != "" || len(c.NoticeTypes) > 0 {
+		noticeTypes = append([]lti.NoticeType{}, c.NoticeTypes...)
+	}
+
 	return OpenIDConfiguration{
 		Issuer:                            c.Issuer,
 		AuthorizationEndpoint:             endpoints.Authorization,
@@ -85,7 +95,8 @@ func (c Config) OpenIDConfiguration() (OpenIDConfiguration, error) {
 				{Type: lti.MessageTypeResourceLinkRequest},
 				{Type: lti.MessageTypeDeepLinkingRequest},
 			},
-			Variables: c.Variables,
+			Variables:            c.Variables,
+			NoticeTypesSupported: noticeTypes,
 		},
 	}, nil
 }

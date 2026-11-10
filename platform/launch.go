@@ -1,7 +1,8 @@
 // Package platform implements the platform side of LTI 1.3: signing the id_token a tool is
 // launched with, verifying Deep Linking responses, Dynamic Registration, the OpenID configuration,
-// the Names and Role Provisioning Services memberships endpoint and the Assignment and Grade
-// Services line item, score and result endpoints.
+// the Names and Role Provisioning Services memberships endpoint, the Assignment and Grade Services
+// line item, score and result endpoints, and the LTI Platform Notification Service's notice handler
+// endpoint and signed notices.
 package platform
 
 import (
@@ -31,7 +32,7 @@ var reservedClaims = map[string]bool{
 	lti.ClaimTargetLinkURI: true, lti.ClaimRoles: true, lti.ClaimContext: true,
 	lti.ClaimResourceLink: true, lti.ClaimLaunchPresentation: true, lti.ClaimToolPlatform: true,
 	lti.ClaimCustom: true, lti.ClaimDeepLinkingSettings: true, lti.ClaimNamesRoleService: true,
-	lti.ClaimAGSEndpoint: true,
+	lti.ClaimAGSEndpoint: true, lti.ClaimPlatformNotificationService: true, lti.ClaimNotice: true,
 }
 
 // namesRoleServiceVersion is the Names and Role Provisioning Services version a launch offers.
@@ -221,6 +222,10 @@ func (l *Launcher) idTokenClaims(tool Tool, nonce string, msg lti.Message, now t
 		claims[lti.ClaimAGSEndpoint] = *common.AGSEndpoint
 	}
 
+	if common.PlatformNotificationService != nil {
+		claims[lti.ClaimPlatformNotificationService] = *common.PlatformNotificationService
+	}
+
 	if len(common.Custom) > 0 {
 		claims[lti.ClaimCustom] = lti.Substitute(common.Custom, substitutionValues(common, link), common.Sharing)
 	}
@@ -328,6 +333,10 @@ func validateCommon(c lti.Common, targetLinkURI string) error {
 		if err := validateAGSEndpoint(*c.AGSEndpoint, c.Context); err != nil {
 			return err
 		}
+	}
+
+	if s := c.PlatformNotificationService; s != nil && !urlcheck.IsHTTPS(s.URL) {
+		return errors.New("lti: launch platform_notification_service_url must be an absolute https url")
 	}
 
 	// LTI 1.3 §5.4.4: return_url is a fully qualified https url.

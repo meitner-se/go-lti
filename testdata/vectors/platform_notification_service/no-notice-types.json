@@ -1,0 +1,18 @@
+{
+  "description": "A platform that sends no notice types yet sends notice_types_supported as an empty array, never null.",
+  "message_type": "LtiResourceLinkRequest",
+  "platform_notification_service": {
+    "platform_notification_service_url": "https://platform.example.com/lti/notice-handlers/deployment-1"
+  },
+  "valid": true,
+  "expect_claim": {
+    "platform_notification_service_url": "https://platform.example.com/lti/notice-handlers/deployment-1",
+    "service_versions": [
+      "1.0"
+    ],
+    "scope": [
+      "https://purl.imsglobal.org/spec/lti/scope/noticehandlers"
+    ],
+    "notice_types_supported": []
+  }
+}

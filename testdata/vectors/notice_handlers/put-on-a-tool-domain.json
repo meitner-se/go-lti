@@ -1,0 +1,29 @@
+{
+  "description": "A handler may be on the tool's domain, the registration's domain property, exactly.",
+  "notice_types": [
+    "LtiContextCopyNotice",
+    "LtiAssetProcessorSubmissionNotice"
+  ],
+  "redirect_uris": [
+    "https://tool.example.com/launch",
+    "https://Assets.Example.org:8443/lti/launch"
+  ],
+  "domains": [
+    "hooks.example.net",
+    "secondary.example.net"
+  ],
+  "scopes": [
+    "https://purl.imsglobal.org/spec/lti/scope/noticehandlers"
+  ],
+  "registered": [],
+  "method": "PUT",
+  "body": {
+    "notice_type": "LtiContextCopyNotice",
+    "handler": "https://hooks.example.net/lti/notices"
+  },
+  "expect_status": 200,
+  "expect_body": {
+    "notice_type": "LtiContextCopyNotice",
+    "handler": "https://hooks.example.net/lti/notices"
+  }
+}

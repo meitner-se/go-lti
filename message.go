@@ -7,7 +7,7 @@ import (
 )
 
 // Claim names from LTI 1.3 §5, LTI Deep Linking 2.0 §4, Names and Role Provisioning Services 2.0
-// §3.6.1.1 and Assignment and Grade Services 2.0 §3.1.
+// §3.6.1.1, Assignment and Grade Services 2.0 §3.1 and the LTI Platform Notification Service.
 const (
 	ClaimMessageType         = "https://purl.imsglobal.org/spec/lti/claim/message_type"
 	ClaimVersion             = "https://purl.imsglobal.org/spec/lti/claim/version"
@@ -28,6 +28,10 @@ const (
 	ClaimDeepLinkingErrorLog = "https://purl.imsglobal.org/spec/lti-dl/claim/errorlog"
 	ClaimNamesRoleService    = "https://purl.imsglobal.org/spec/lti-nrps/claim/namesroleservice"
 	ClaimAGSEndpoint         = "https://purl.imsglobal.org/spec/lti-ags/claim/endpoint"
+	// ClaimPlatformNotificationService tells a tool where to register its notice handlers.
+	ClaimPlatformNotificationService = "https://purl.imsglobal.org/spec/lti/claim/platformnotificationservice"
+	// ClaimNotice is the notice a notice JWT carries.
+	ClaimNotice = "https://purl.imsglobal.org/spec/lti/claim/notice"
 )
 
 // Message is a message the platform launches a tool with: *ResourceLinkRequest or
@@ -84,6 +88,10 @@ type Common struct {
 	ContextMembershipsURL string
 	// AGSEndpoint, when set, sends the Assignment and Grade Services endpoint claim; it needs Context.
 	AGSEndpoint *AGSEndpoint
+	// PlatformNotificationService, when set, sends the Platform Notification Service claim: where
+	// the tool registers its notice handlers for the deployment, and the notice types the platform
+	// sends. Config.PlatformNotificationService builds it.
+	PlatformNotificationService *PlatformNotificationService
 	// Presentation is how the platform shows the tool.
 	Presentation Presentation
 	// Custom are the custom parameters of the link or tool, as configured. The launch substitutes

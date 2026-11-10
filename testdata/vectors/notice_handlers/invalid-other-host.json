@@ -1,0 +1,27 @@
+{
+  "description": "A handler must be on the host of one of the tool's redirect URIs or one of its domains.",
+  "notice_types": [
+    "LtiContextCopyNotice",
+    "LtiAssetProcessorSubmissionNotice"
+  ],
+  "redirect_uris": [
+    "https://tool.example.com/launch",
+    "https://Assets.Example.org:8443/lti/launch"
+  ],
+  "domains": [
+    "tool.example.com",
+    "secondary.example.net"
+  ],
+  "scopes": [
+    "https://purl.imsglobal.org/spec/lti/scope/noticehandlers"
+  ],
+  "registered": [],
+  "method": "PUT",
+  "body": {
+    "notice_type": "LtiContextCopyNotice",
+    "handler": "https://attacker.example.net/notices"
+  },
+  "expect_status": 400,
+  "error_code": "invalid_request",
+  "error_description": "the handler must be an https url on the tool's own domain"
+}

@@ -1,0 +1,28 @@
+{
+  "description": "max_batch_size must be an integer.",
+  "notice_types": [
+    "LtiContextCopyNotice",
+    "LtiAssetProcessorSubmissionNotice"
+  ],
+  "redirect_uris": [
+    "https://tool.example.com/launch",
+    "https://Assets.Example.org:8443/lti/launch"
+  ],
+  "domains": [
+    "tool.example.com",
+    "secondary.example.net"
+  ],
+  "scopes": [
+    "https://purl.imsglobal.org/spec/lti/scope/noticehandlers"
+  ],
+  "registered": [],
+  "method": "PUT",
+  "body": {
+    "notice_type": "LtiContextCopyNotice",
+    "handler": "https://tool.example.com/notices",
+    "max_batch_size": 2.5
+  },
+  "expect_status": 400,
+  "error_code": "invalid_request",
+  "error_description": "max_batch_size must be a positive integer"
+}
