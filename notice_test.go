@@ -146,11 +146,10 @@ func TestNotice_MarshalJSON_KeepsTheTimeZone(t *testing.T) {
 func TestNewNoticeEnvelope(t *testing.T) {
 	t.Parallel()
 
-	body, err := json.Marshal(lti.NewNoticeEnvelope("eyJ.a.b", "eyJ.c.d"))
-	require.NoError(t, err)
+	// An envelope is only strings, so it always encodes.
+	body, _ := json.Marshal(lti.NewNoticeEnvelope("eyJ.a.b", "eyJ.c.d"))
 	assert.JSONEq(t, `{"notices": [{"jwt": "eyJ.a.b"}, {"jwt": "eyJ.c.d"}]}`, string(body))
 
-	body, err = json.Marshal(lti.NewNoticeEnvelope())
-	require.NoError(t, err)
+	body, _ = json.Marshal(lti.NewNoticeEnvelope())
 	assert.JSONEq(t, `{"notices": []}`, string(body))
 }

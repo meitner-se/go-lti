@@ -2,7 +2,6 @@ package platform
 
 import (
 	"encoding/json"
-	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -336,7 +335,7 @@ func TestPostNotices_TheDefaultClientRefusesPrivateAddresses(t *testing.T) {
 	assert.False(t, called)
 
 	var delivery *NoticeDeliveryError
-	assert.False(t, errors.As(err, &delivery), "a connection failure isn't a delivery answer")
+	assert.NotErrorAs(t, err, &delivery, "a connection failure isn't a delivery answer")
 }
 
 func TestPostNotices_SignedNoticesRoundTrip(t *testing.T) {
