@@ -27,11 +27,16 @@ type LoginInitiation struct {
 	MessageHint string
 	// TargetLinkURI defaults to Tool.TargetLinkURI.
 	TargetLinkURI string
+	// StorageTarget is lti_storage_target (LTI OIDC Login with LTI Client Side postMessages): the
+	// name of the frame that answers the tool's lti.put_data and lti.get_data messages, usually
+	// "_parent". Set it only when the platform supports that postMessage storage and launches the
+	// tool inside a frame; a top-level launch has first-party cookies and leaves it empty.
+	StorageTarget string
 }
 
 // LoginInitiationURL returns the tool's login initiation URL with iss, login_hint,
-// lti_message_hint, target_link_uri, client_id and lti_deployment_id. The platform sends the
-// browser there with a redirect. It needs no keys.
+// lti_message_hint, target_link_uri, client_id, lti_deployment_id and lti_storage_target. The
+// platform sends the browser there with a redirect. It needs no keys.
 func (c Config) LoginInitiationURL(tool Tool, li LoginInitiation) (string, error) {
 	u, ok := urlcheck.ParseHTTPS(tool.InitiateLoginURI)
 	if !ok {
@@ -65,6 +70,10 @@ func (c Config) LoginInitiationURL(tool Tool, li LoginInitiation) (string, error
 
 	if li.MessageHint != "" {
 		query.Set("lti_message_hint", li.MessageHint)
+	}
+
+	if li.StorageTarget != "" {
+		query.Set("lti_storage_target", li.StorageTarget)
 	}
 
 	u.RawQuery = query.Encode()

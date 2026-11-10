@@ -113,6 +113,51 @@ func TestLoginInitiationURL_OverridesTheTargetAndOmitsAnEmptyMessageHint(t *test
 	assert.NotContains(t, u.Query(), "lti_message_hint")
 }
 
+func TestLoginInitiationURL_StorageTarget(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name          string
+		storageTarget string
+		wantRawQuery  string
+	}{
+		{name: "the parent frame", storageTarget: "_parent", wantRawQuery: "lti_storage_target=_parent"},
+		{name: "a named frame", storageTarget: "lti-storage", wantRawQuery: "lti_storage_target=lti-storage"},
+		{name: "an encoded frame name", storageTarget: "frame name&iss=x#y", wantRawQuery: "lti_storage_target=frame+name%26iss%3Dx%23y"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			li := createTestLoginInitiation()
+			li.StorageTarget = tt.storageTarget
+
+			raw, err := createTestConfig().LoginInitiationURL(createTestTool(), li)
+			require.NoError(t, err)
+
+			u, err := url.Parse(raw)
+			require.NoError(t, err)
+
+			assert.Contains(t, strings.Split(u.RawQuery, "&"), tt.wantRawQuery)
+			assert.Equal(t, []string{tt.storageTarget}, u.Query()["lti_storage_target"])
+			assert.Equal(t, []string{"https://platform.example.com/lti"}, u.Query()["iss"])
+		})
+	}
+}
+
+func TestLoginInitiationURL_OmitsAnEmptyStorageTarget(t *testing.T) {
+	t.Parallel()
+
+	raw, err := createTestConfig().LoginInitiationURL(createTestTool(), createTestLoginInitiation())
+	require.NoError(t, err)
+
+	u, err := url.Parse(raw)
+	require.NoError(t, err)
+
+	assert.NotContains(t, u.Query(), "lti_storage_target")
+}
+
 func TestLoginInitiationURL_Rejects(t *testing.T) {
 	t.Parallel()
 
