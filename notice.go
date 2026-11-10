@@ -10,7 +10,7 @@ import (
 // offers, the only one in the service claim's service_versions.
 const PlatformNotificationServiceVersion = "1.0"
 
-// NoticeType is the type of a platform notice, such as LtiHelloWorldNotice.
+// NoticeType is the type of a platform notice, such as LtiContextCopyNotice.
 type NoticeType string
 
 // PlatformNotificationService is the LTI Platform Notification Service claim: where the tool

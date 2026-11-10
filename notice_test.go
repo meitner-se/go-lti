@@ -20,7 +20,7 @@ func TestPlatformNotificationService_MarshalJSON(t *testing.T) {
 
 	claim := lti.PlatformNotificationService{
 		URL:                  "https://platform.example.com/lti/notice-handlers/deployment-1",
-		NoticeTypesSupported: []lti.NoticeType{"LtiHelloWorldNotice"},
+		NoticeTypesSupported: []lti.NoticeType{"LtiContextCopyNotice"},
 	}
 
 	body, err := json.Marshal(claim)
@@ -30,7 +30,7 @@ func TestPlatformNotificationService_MarshalJSON(t *testing.T) {
 		"platform_notification_service_url": "https://platform.example.com/lti/notice-handlers/deployment-1",
 		"service_versions": ["1.0"],
 		"scope": ["https://purl.imsglobal.org/spec/lti/scope/noticehandlers"],
-		"notice_types_supported": ["LtiHelloWorldNotice"]
+		"notice_types_supported": ["LtiContextCopyNotice"]
 	}`, string(body))
 
 	var decoded lti.PlatformNotificationService
@@ -56,7 +56,7 @@ func TestNoticeHandlers_MarshalJSON(t *testing.T) {
 		ClientID:     "client-1",
 		DeploymentID: "deployment-1",
 		NoticeHandlers: []lti.NoticeHandler{
-			{NoticeType: "LtiHelloWorldNotice", Handler: "https://tool.example.com/notices"},
+			{NoticeType: "LtiContextCopyNotice", Handler: "https://tool.example.com/notices"},
 			{NoticeType: "LtiAssetProcessorSubmissionNotice", Handler: ""},
 		},
 	})
@@ -66,7 +66,7 @@ func TestNoticeHandlers_MarshalJSON(t *testing.T) {
 		"client_id": "client-1",
 		"deployment_id": "deployment-1",
 		"notice_handlers": [
-			{"notice_type": "LtiHelloWorldNotice", "handler": "https://tool.example.com/notices"},
+			{"notice_type": "LtiContextCopyNotice", "handler": "https://tool.example.com/notices"},
 			{"notice_type": "LtiAssetProcessorSubmissionNotice", "handler": ""}
 		]
 	}`, string(body))
@@ -84,20 +84,20 @@ func TestNoticeHandlerRegistration_UnmarshalJSON(t *testing.T) {
 		want lti.NoticeHandlerRegistration
 	}{
 		"with a batch size": {
-			body: `{"notice_type": "LtiHelloWorldNotice", "handler": "https://tool.example.com/notices", "max_batch_size": 20}`,
-			want: lti.NoticeHandlerRegistration{NoticeType: "LtiHelloWorldNotice", Handler: "https://tool.example.com/notices", MaxBatchSize: 20},
+			body: `{"notice_type": "LtiContextCopyNotice", "handler": "https://tool.example.com/notices", "max_batch_size": 20}`,
+			want: lti.NoticeHandlerRegistration{NoticeType: "LtiContextCopyNotice", Handler: "https://tool.example.com/notices", MaxBatchSize: 20},
 		},
 		"an integral float": {
-			body: `{"notice_type": "LtiHelloWorldNotice", "handler": "", "max_batch_size": 5.0}`,
-			want: lti.NoticeHandlerRegistration{NoticeType: "LtiHelloWorldNotice", Handler: "", MaxBatchSize: 5},
+			body: `{"notice_type": "LtiContextCopyNotice", "handler": "", "max_batch_size": 5.0}`,
+			want: lti.NoticeHandlerRegistration{NoticeType: "LtiContextCopyNotice", Handler: "", MaxBatchSize: 5},
 		},
 		"without a batch size": {
-			body: `{"notice_type": "LtiHelloWorldNotice", "handler": ""}`,
-			want: lti.NoticeHandlerRegistration{NoticeType: "LtiHelloWorldNotice", Handler: "", MaxBatchSize: 0},
+			body: `{"notice_type": "LtiContextCopyNotice", "handler": ""}`,
+			want: lti.NoticeHandlerRegistration{NoticeType: "LtiContextCopyNotice", Handler: "", MaxBatchSize: 0},
 		},
 		"a null batch size": {
-			body: `{"notice_type": "LtiHelloWorldNotice", "handler": "", "max_batch_size": null}`,
-			want: lti.NoticeHandlerRegistration{NoticeType: "LtiHelloWorldNotice", Handler: "", MaxBatchSize: 0},
+			body: `{"notice_type": "LtiContextCopyNotice", "handler": "", "max_batch_size": null}`,
+			want: lti.NoticeHandlerRegistration{NoticeType: "LtiContextCopyNotice", Handler: "", MaxBatchSize: 0},
 		},
 	}
 
@@ -118,7 +118,7 @@ func TestNoticeHandlerRegistration_UnmarshalJSON_RefusesABadBatchSize(t *testing
 	for _, size := range []string{"0", "-1", "2.5", `"10"`, "true", "1e12"} {
 		var got lti.NoticeHandlerRegistration
 
-		err := json.Unmarshal([]byte(`{"notice_type": "LtiHelloWorldNotice", "handler": "", "max_batch_size": `+size+`}`), &got)
+		err := json.Unmarshal([]byte(`{"notice_type": "LtiContextCopyNotice", "handler": "", "max_batch_size": `+size+`}`), &got)
 		require.ErrorIs(t, err, lti.ErrMaxBatchSize, size)
 	}
 }
@@ -129,12 +129,12 @@ func TestNotice_MarshalJSON_KeepsTheTimeZone(t *testing.T) {
 	notice := lti.Notice{
 		ID:        "notice-1",
 		Timestamp: time.Date(2026, 11, 10, 13, 45, 12, 250_000_000, time.FixedZone("CET", 3600)),
-		Type:      "LtiHelloWorldNotice",
+		Type:      "LtiContextCopyNotice",
 	}
 
 	body, err := json.Marshal(notice)
 	require.NoError(t, err)
-	assert.JSONEq(t, `{"id": "notice-1", "timestamp": "2026-11-10T13:45:12.250+01:00", "type": "LtiHelloWorldNotice"}`, string(body))
+	assert.JSONEq(t, `{"id": "notice-1", "timestamp": "2026-11-10T13:45:12.250+01:00", "type": "LtiContextCopyNotice"}`, string(body))
 
 	var decoded lti.Notice
 	require.NoError(t, json.Unmarshal(body, &decoded))

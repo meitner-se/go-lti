@@ -1,12 +1,16 @@
 {
   "description": "A PUT registers a handler and is answered with the type and handler.",
   "notice_types": [
-    "LtiHelloWorldNotice",
+    "LtiContextCopyNotice",
     "LtiAssetProcessorSubmissionNotice"
   ],
   "redirect_uris": [
     "https://tool.example.com/launch",
     "https://Assets.Example.org:8443/lti/launch"
+  ],
+  "domains": [
+    "tool.example.com",
+    "hooks.example.net"
   ],
   "scopes": [
     "https://purl.imsglobal.org/spec/lti/scope/noticehandlers"
@@ -14,12 +18,12 @@
   "registered": [],
   "method": "PUT",
   "body": {
-    "notice_type": "LtiHelloWorldNotice",
+    "notice_type": "LtiContextCopyNotice",
     "handler": "https://tool.example.com/notices"
   },
   "expect_status": 200,
   "expect_body": {
-    "notice_type": "LtiHelloWorldNotice",
+    "notice_type": "LtiContextCopyNotice",
     "handler": "https://tool.example.com/notices"
   }
 }

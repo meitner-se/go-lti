@@ -3,7 +3,7 @@
   "notice": {
     "deployment_id": "",
     "id": "notice-1",
-    "type": "LtiHelloWorldNotice",
+    "type": "LtiContextCopyNotice",
     "timestamp": "2026-11-10T13:45:12Z"
   },
   "valid": false

@@ -4,7 +4,6 @@ import (
 	"errors"
 	"net/http"
 	"slices"
-	"strings"
 
 	"github.com/meitner-se/go-lti"
 	"github.com/meitner-se/go-lti/internal/urlcheck"
@@ -22,8 +21,8 @@ var ErrNoticeHandlersForbidden = lti.NewError(lti.ErrorAccessDenied, "the tool m
 var (
 	// errNoticeTypeUnsupported refuses a registration for a notice type the platform doesn't send.
 	errNoticeTypeUnsupported = lti.NewError(lti.ErrorInvalidRequest, "the platform doesn't support the notice type", nil)
-	// errNoticeHandlerURL refuses a handler that isn't an https URL on the tool's own hosts.
-	errNoticeHandlerURL = lti.NewError(lti.ErrorInvalidRequest, "the handler must be an https url on the host of one of the tool's redirect uris", nil)
+	// errNoticeHandlerURL refuses a handler that isn't an https URL on the tool's own domain.
+	errNoticeHandlerURL = lti.NewError(lti.ErrorInvalidRequest, "the handler must be an https url on the tool's own domain", nil)
 	// errMaxBatchSize refuses a max_batch_size that isn't a positive integer.
 	errMaxBatchSize = lti.NewError(lti.ErrorInvalidRequest, "max_batch_size must be a positive integer", nil)
 )
@@ -32,7 +31,7 @@ var (
 // ReadNoticeHandlers returns them.
 type DeploymentNoticeHandlers struct {
 	// Tool is the deployment's tool, whose ClientID must be the client's. A handler must be on the
-	// host of one of its RedirectURIs.
+	// host of one of its RedirectURIs or one of its Domains (see OnToolHosts).
 	Tool Tool
 	// Handlers are the tool's handler for each notice type it registered one for. A type the
 	// platform no longer supports is left out of the answer; a type without a handler is answered
@@ -168,8 +167,8 @@ func (e *endpoints) failNoticeHandlers(w http.ResponseWriter, r *http.Request, e
 	e.failService(w, r, lti.ScopeNoticeHandlers, err)
 }
 
-// OnToolHosts reports whether rawURL is an https URL whose host is the host of one of the tool's
-// redirect URIs, as a notice handler must be. Subdomains and other domains of the tool don't count.
+// OnToolHosts reports whether rawURL is an https URL whose host is exactly the host of one of the
+// tool's redirect URIs or one of its domains, as a notice handler must be. Subdomains don't count.
 func OnToolHosts(tool Tool, rawURL string) bool {
 	u, ok := urlcheck.ParseHTTPS(rawURL)
 	if !ok {
@@ -178,9 +177,16 @@ func OnToolHosts(tool Tool, rawURL string) bool {
 
 	host := urlcheck.NormalizeDomain(u.Hostname())
 
-	return slices.ContainsFunc(tool.RedirectURIs, func(redirectURI string) bool {
-		redirect, ok := urlcheck.ParseHTTPS(redirectURI)
+	hosts := make([]string, 0, len(tool.RedirectURIs)+len(tool.Domains))
+	for _, redirectURI := range tool.RedirectURIs {
+		if redirect, ok := urlcheck.ParseHTTPS(redirectURI); ok {
+			hosts = append(hosts, redirect.Hostname())
+		}
+	}
 
-		return ok && strings.EqualFold(urlcheck.NormalizeDomain(redirect.Hostname()), host)
+	hosts = append(hosts, tool.Domains...)
+
+	return slices.ContainsFunc(hosts, func(toolHost string) bool {
+		return toolHost != "" && urlcheck.NormalizeDomain(toolHost) == host
 	})
 }

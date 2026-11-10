@@ -22,9 +22,9 @@ type noticeHandlersServer struct {
 }
 
 const (
-	helloWorldNotice = lti.NoticeType("LtiHelloWorldNotice")
-	submissionNotice = lti.NoticeType("LtiAssetProcessorSubmissionNotice")
-	noticeHandlerURL = "https://platform.example.com/lti/notice-handlers/deployment-1"
+	contextCopyNotice = lti.NoticeType("LtiContextCopyNotice")
+	submissionNotice  = lti.NoticeType("LtiAssetProcessorSubmissionNotice")
+	noticeHandlerURL  = "https://platform.example.com/lti/notice-handlers/deployment-1"
 )
 
 func newNoticeHandlersServer() *noticeHandlersServer {
@@ -107,7 +107,7 @@ func (s *noticeHandlersServer) handlers() Handlers {
 func createNoticeHandlersTestConfig() Config {
 	cfg := createTestConfig()
 	cfg.Paths.NoticeHandlers = "/notice-handlers"
-	cfg.NoticeTypes = []lti.NoticeType{helloWorldNotice, submissionNotice}
+	cfg.NoticeTypes = []lti.NoticeType{contextCopyNotice, submissionNotice}
 
 	return cfg
 }
@@ -137,7 +137,7 @@ func TestNewHandler_GetNoticeHandlers(t *testing.T) {
 		"client_id":     "client-1",
 		"deployment_id": "deployment-1",
 		"notice_handlers": []any{
-			map[string]any{"notice_type": string(helloWorldNotice), "handler": ""},
+			map[string]any{"notice_type": string(contextCopyNotice), "handler": ""},
 			map[string]any{"notice_type": string(submissionNotice), "handler": "https://tool.example.com/notices"},
 		},
 	}, got)
@@ -164,19 +164,31 @@ func TestNewHandler_PutNoticeHandler(t *testing.T) {
 	handler := newNoticeHandlersTestHandler(t, s)
 
 	w := callAGS(t, handler, http.MethodPut, noticeHandlerURL, "token-1",
-		`{"notice_type": "LtiHelloWorldNotice", "handler": "https://tool.example.com/hello", "max_batch_size": 10}`)
+		`{"notice_type": "LtiContextCopyNotice", "handler": "https://tool.example.com/hello", "max_batch_size": 10}`)
 	got := requireAGSBody(t, w, http.StatusOK, "application/json")
-	assert.Equal(t, map[string]any{"notice_type": "LtiHelloWorldNotice", "handler": "https://tool.example.com/hello"}, got)
+	assert.Equal(t, map[string]any{"notice_type": "LtiContextCopyNotice", "handler": "https://tool.example.com/hello"}, got)
 
 	require.Len(t, s.registrations, 1)
-	assert.Equal(t, lti.NoticeHandlerRegistration{NoticeType: helloWorldNotice, Handler: "https://tool.example.com/hello", MaxBatchSize: 10}, s.registrations[0])
+	assert.Equal(t, lti.NoticeHandlerRegistration{NoticeType: contextCopyNotice, Handler: "https://tool.example.com/hello", MaxBatchSize: 10}, s.registrations[0])
 
 	w = callAGS(t, handler, http.MethodGet, noticeHandlerURL, "token-1", "")
 	got = requireAGSBody(t, w, http.StatusOK, "application/json")
 	assert.Equal(t, []any{
-		map[string]any{"notice_type": string(helloWorldNotice), "handler": "https://tool.example.com/hello"},
+		map[string]any{"notice_type": string(contextCopyNotice), "handler": "https://tool.example.com/hello"},
 		map[string]any{"notice_type": string(submissionNotice), "handler": "https://tool.example.com/notices"},
 	}, got.(map[string]any)["notice_handlers"])
+}
+
+func TestNewHandler_PutNoticeHandlerOnAToolDomain(t *testing.T) {
+	t.Parallel()
+
+	s := newNoticeHandlersServer()
+	handler := newNoticeHandlersTestHandler(t, s)
+
+	// cdn.example.net is one of the tool's domains, though no redirect URI is on it.
+	w := callAGS(t, handler, http.MethodPut, noticeHandlerURL, "token-1", `{"notice_type": "LtiContextCopyNotice", "handler": "https://cdn.example.net/notices"}`)
+	got := requireAGSBody(t, w, http.StatusOK, "application/json")
+	assert.Equal(t, map[string]any{"notice_type": "LtiContextCopyNotice", "handler": "https://cdn.example.net/notices"}, got)
 }
 
 func TestNewHandler_PutNoticeHandlerEmptyRemovesIt(t *testing.T) {
@@ -192,7 +204,7 @@ func TestNewHandler_PutNoticeHandlerEmptyRemovesIt(t *testing.T) {
 	w = callAGS(t, handler, http.MethodGet, noticeHandlerURL, "token-1", "")
 	got = requireAGSBody(t, w, http.StatusOK, "application/json")
 	assert.Equal(t, []any{
-		map[string]any{"notice_type": string(helloWorldNotice), "handler": ""},
+		map[string]any{"notice_type": string(contextCopyNotice), "handler": ""},
 		map[string]any{"notice_type": string(submissionNotice), "handler": ""},
 	}, got.(map[string]any)["notice_handlers"])
 }
@@ -206,16 +218,16 @@ func TestNewHandler_PutNoticeHandlerRefuses(t *testing.T) {
 	}{
 		"an unsupported type":       {`{"notice_type": "LtiUnknownNotice", "handler": "https://tool.example.com/notices"}`, "the platform doesn't support the notice type"},
 		"no type":                   {`{"handler": "https://tool.example.com/notices"}`, "the platform doesn't support the notice type"},
-		"an http handler":           {`{"notice_type": "LtiHelloWorldNotice", "handler": "http://tool.example.com/notices"}`, errNoticeHandlerURL.Description},
-		"a handler on another host": {`{"notice_type": "LtiHelloWorldNotice", "handler": "https://cdn.example.net/notices"}`, errNoticeHandlerURL.Description},
-		"a handler on a subdomain":  {`{"notice_type": "LtiHelloWorldNotice", "handler": "https://hooks.tool.example.com/notices"}`, errNoticeHandlerURL.Description},
+		"an http handler":           {`{"notice_type": "LtiContextCopyNotice", "handler": "http://tool.example.com/notices"}`, errNoticeHandlerURL.Description},
+		"a handler on another host": {`{"notice_type": "LtiContextCopyNotice", "handler": "https://attacker.example.net/notices"}`, errNoticeHandlerURL.Description},
+		"a handler on a subdomain":  {`{"notice_type": "LtiContextCopyNotice", "handler": "https://hooks.tool.example.com/notices"}`, errNoticeHandlerURL.Description},
 		"a handler with credentials": {
-			`{"notice_type": "LtiHelloWorldNotice", "handler": "https://user:secret@tool.example.com/notices"}`, errNoticeHandlerURL.Description,
+			`{"notice_type": "LtiContextCopyNotice", "handler": "https://user:secret@tool.example.com/notices"}`, errNoticeHandlerURL.Description,
 		},
-		"a zero batch size":       {`{"notice_type": "LtiHelloWorldNotice", "handler": "https://tool.example.com/notices", "max_batch_size": 0}`, "max_batch_size must be a positive integer"},
-		"a negative batch size":   {`{"notice_type": "LtiHelloWorldNotice", "handler": "https://tool.example.com/notices", "max_batch_size": -5}`, "max_batch_size must be a positive integer"},
-		"a fractional batch size": {`{"notice_type": "LtiHelloWorldNotice", "handler": "https://tool.example.com/notices", "max_batch_size": 1.5}`, "max_batch_size must be a positive integer"},
-		"a body that isn't JSON":  {`notice_type=LtiHelloWorldNotice`, "the notice handler is not valid JSON of its media type"},
+		"a zero batch size":       {`{"notice_type": "LtiContextCopyNotice", "handler": "https://tool.example.com/notices", "max_batch_size": 0}`, "max_batch_size must be a positive integer"},
+		"a negative batch size":   {`{"notice_type": "LtiContextCopyNotice", "handler": "https://tool.example.com/notices", "max_batch_size": -5}`, "max_batch_size must be a positive integer"},
+		"a fractional batch size": {`{"notice_type": "LtiContextCopyNotice", "handler": "https://tool.example.com/notices", "max_batch_size": 1.5}`, "max_batch_size must be a positive integer"},
+		"a body that isn't JSON":  {`notice_type=LtiContextCopyNotice`, "the notice handler is not valid JSON of its media type"},
 	}
 
 	for name, tt := range tests {
@@ -239,7 +251,7 @@ func TestNewHandler_PutNoticeHandlerLetsThePlatformRefuseABatchSize(t *testing.T
 	s.replaceErr = lti.NewError(lti.ErrorInvalidRequest, "max_batch_size must be at most 100", nil)
 	handler := newNoticeHandlersTestHandler(t, s)
 
-	w := callAGS(t, handler, http.MethodPut, noticeHandlerURL, "token-1", `{"notice_type": "LtiHelloWorldNotice", "handler": "https://tool.example.com/notices", "max_batch_size": 1000}`)
+	w := callAGS(t, handler, http.MethodPut, noticeHandlerURL, "token-1", `{"notice_type": "LtiContextCopyNotice", "handler": "https://tool.example.com/notices", "max_batch_size": 1000}`)
 	requireAGSError(t, w, http.StatusBadRequest, lti.ErrorInvalidRequest, "max_batch_size must be at most 100")
 }
 
@@ -266,7 +278,7 @@ func TestNewHandler_NoticeHandlersAnswersDeploymentsTheToolMayNotManage(t *testi
 		},
 		"another tool's deployment, on a PUT": {
 			method: http.MethodPut, target: "https://platform.example.com/lti/notice-handlers/deployment-2",
-			body:   `{"notice_type": "LtiHelloWorldNotice", "handler": "https://tool.example.com/notices"}`,
+			body:   `{"notice_type": "LtiContextCopyNotice", "handler": "https://tool.example.com/notices"}`,
 			status: http.StatusForbidden, code: lti.ErrorAccessDenied,
 		},
 		"a record of another tool that the hook let through": {
@@ -275,7 +287,7 @@ func TestNewHandler_NoticeHandlersAnswersDeploymentsTheToolMayNotManage(t *testi
 		},
 		"a replacement the platform refuses": {
 			method: http.MethodPut, target: noticeHandlerURL,
-			body:       `{"notice_type": "LtiHelloWorldNotice", "handler": "https://tool.example.com/notices"}`,
+			body:       `{"notice_type": "LtiContextCopyNotice", "handler": "https://tool.example.com/notices"}`,
 			replaceErr: fmt.Errorf("checking permissions: %w", ErrNoticeHandlersForbidden),
 			status:     http.StatusForbidden, code: lti.ErrorAccessDenied,
 		},
@@ -320,7 +332,7 @@ func TestNewHandler_NoticeHandlersRefusesTokens(t *testing.T) {
 				s := newNoticeHandlersServer()
 				handler := newNoticeHandlersTestHandler(t, s)
 
-				w := callAGS(t, handler, method, noticeHandlerURL, tt.token, `{"notice_type": "LtiHelloWorldNotice", "handler": ""}`)
+				w := callAGS(t, handler, method, noticeHandlerURL, tt.token, `{"notice_type": "LtiContextCopyNotice", "handler": ""}`)
 				assert.Equal(t, tt.status, w.Code, method)
 				assert.Equal(t, tt.challenge, w.Header().Get("WWW-Authenticate"), method)
 				assert.Equal(t, "no-store", w.Header().Get("Cache-Control"), method)
@@ -337,7 +349,7 @@ func TestNewHandler_NoticeHandlersHookErrors(t *testing.T) {
 	s.replaceErr = errors.New("database is down")
 	handler := newNoticeHandlersTestHandler(t, s)
 
-	w := callAGS(t, handler, http.MethodPut, noticeHandlerURL, "token-1", `{"notice_type": "LtiHelloWorldNotice", "handler": ""}`)
+	w := callAGS(t, handler, http.MethodPut, noticeHandlerURL, "token-1", `{"notice_type": "LtiContextCopyNotice", "handler": ""}`)
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
 	assert.NotContains(t, w.Body.String(), "database")
 }
@@ -387,6 +399,7 @@ func TestOnToolHosts(t *testing.T) {
 
 	tool := createTestTool()
 	tool.RedirectURIs = []string{"https://tool.example.com/launch", "https://Assets.Example.org:8443/lti", "not a url"}
+	tool.Domains = []string{"tool.example.com", "CDN.example.net", ""}
 
 	for rawURL, want := range map[string]bool{
 		"https://tool.example.com/notices":        true,
@@ -396,7 +409,8 @@ func TestOnToolHosts(t *testing.T) {
 		"http://tool.example.com/notices":         false,
 		"https://hooks.tool.example.com/notices":  false,
 		"https://example.com/notices":             false,
-		"https://cdn.example.net/notices":         false,
+		"https://cdn.example.net/notices":         true,
+		"https://img.cdn.example.net/notices":     false,
 		"https://user@tool.example.com/notices":   false,
 		"/notices":                                false,
 		"":                                        false,
@@ -448,10 +462,10 @@ func TestConfig_PlatformNotificationService(t *testing.T) {
 
 	got, err := cfg.PlatformNotificationService("deployment-1")
 	require.NoError(t, err)
-	assert.Equal(t, &lti.PlatformNotificationService{URL: noticeHandlerURL, NoticeTypesSupported: []lti.NoticeType{helloWorldNotice, submissionNotice}}, got)
+	assert.Equal(t, &lti.PlatformNotificationService{URL: noticeHandlerURL, NoticeTypesSupported: []lti.NoticeType{contextCopyNotice, submissionNotice}}, got)
 
 	got.NoticeTypesSupported[0] = "changed"
-	assert.Equal(t, helloWorldNotice, cfg.NoticeTypes[0], "the claim has its own copy of the types")
+	assert.Equal(t, contextCopyNotice, cfg.NoticeTypes[0], "the claim has its own copy of the types")
 
 	_, err = createTestConfig().PlatformNotificationService("deployment-1")
 	require.Error(t, err)

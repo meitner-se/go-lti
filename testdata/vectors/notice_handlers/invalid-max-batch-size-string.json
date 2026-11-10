@@ -1,12 +1,16 @@
 {
   "description": "max_batch_size must be a number.",
   "notice_types": [
-    "LtiHelloWorldNotice",
+    "LtiContextCopyNotice",
     "LtiAssetProcessorSubmissionNotice"
   ],
   "redirect_uris": [
     "https://tool.example.com/launch",
     "https://Assets.Example.org:8443/lti/launch"
+  ],
+  "domains": [
+    "tool.example.com",
+    "hooks.example.net"
   ],
   "scopes": [
     "https://purl.imsglobal.org/spec/lti/scope/noticehandlers"
@@ -14,7 +18,7 @@
   "registered": [],
   "method": "PUT",
   "body": {
-    "notice_type": "LtiHelloWorldNotice",
+    "notice_type": "LtiContextCopyNotice",
     "handler": "https://tool.example.com/notices",
     "max_batch_size": "10"
   },

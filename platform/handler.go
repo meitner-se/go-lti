@@ -156,7 +156,7 @@ type Handlers struct {
 	// ReplaceNoticeHandler saves client's handler for one notice type in the deployment, or removes
 	// it when registration.Handler is "". go-lti has checked, with ReadNoticeHandlers, that client
 	// may manage the deployment, that the notice type is one of Config.NoticeTypes, that the handler
-	// is an https URL on the host of one of the tool's redirect URIs, and that MaxBatchSize is 0
+	// is an https URL on the tool's own domain (see OnToolHosts), and that MaxBatchSize is 0
 	// (not given) or positive. Return an *lti.Error with lti.ErrorInvalidRequest for a MaxBatchSize
 	// the platform can't honour (a 400), or ErrNoticeHandlersForbidden (a 403). Any other error is
 	// answered as for AuthorizeService.

@@ -22,7 +22,7 @@ func createTestNotice() Notice {
 	return Notice{
 		DeploymentID: "deployment-1",
 		ID:           "3d5c8e2a-0b1f-4c6d-9e7a-2f4b6d8a0c1e",
-		Type:         helloWorldNotice,
+		Type:         contextCopyNotice,
 		Timestamp:    time.Date(2026, 11, 10, 13, 45, 12, 0, time.FixedZone("CET", 3600)),
 	}
 }
@@ -100,7 +100,7 @@ func TestLauncher_SignNotice_VerifiesAgainstThePublishedJWKS(t *testing.T) {
 	assert.Equal(t, map[string]any{
 		"id":        "3d5c8e2a-0b1f-4c6d-9e7a-2f4b6d8a0c1e",
 		"timestamp": "2026-11-10T13:45:12.000+01:00",
-		"type":      "LtiHelloWorldNotice",
+		"type":      "LtiContextCopyNotice",
 	}, claims[lti.ClaimNotice])
 	assert.Equal(t, map[string]any{"id": "course-1"}, claims[lti.ClaimContext])
 	assert.Equal(t, map[string]any{"course": "biology"}, claims[lti.ClaimCustom])
@@ -157,6 +157,39 @@ func TestLauncher_SignNotice_AResendIsSignedAgain(t *testing.T) {
 	assert.Equal(t, a[lti.ClaimNotice], b[lti.ClaimNotice], "the same notice id, timestamp and type")
 }
 
+func TestLauncher_SignNotice_CarriesRolesAndServiceClaims(t *testing.T) {
+	t.Parallel()
+
+	launcher := createTestLauncher(t, ltitest.NewSigningKey(t))
+
+	notice := createTestNotice()
+	notice.Subject = "teacher-1"
+	notice.Roles = []lti.Role{lti.RoleInstructor}
+	notice.Context = &lti.LaunchContext{ID: "course-1"}
+	notice.ContextMembershipsURL = "https://platform.example.com/lti/contexts/course-1/memberships"
+	notice.AGSEndpoint = &lti.AGSEndpoint{Scopes: []lti.Scope{lti.ScopeAGSScore}, LineItems: "https://platform.example.com/lti/contexts/course-1/lineitems"}
+
+	claims, err := launcher.noticeClaims(createTestTool(), notice, "nonce-1", testNow)
+	require.NoError(t, err)
+
+	got := claimsJSON(t, map[string]any{
+		lti.ClaimRoles:            claims[lti.ClaimRoles],
+		lti.ClaimNamesRoleService: claims[lti.ClaimNamesRoleService],
+		lti.ClaimAGSEndpoint:      claims[lti.ClaimAGSEndpoint],
+	})
+	assert.JSONEq(t, `{
+		"https://purl.imsglobal.org/spec/lti/claim/roles": ["http://purl.imsglobal.org/vocab/lis/v2/membership#Instructor"],
+		"https://purl.imsglobal.org/spec/lti-nrps/claim/namesroleservice": {
+			"context_memberships_url": "https://platform.example.com/lti/contexts/course-1/memberships",
+			"service_versions": ["2.0"]
+		},
+		"https://purl.imsglobal.org/spec/lti-ags/claim/endpoint": {
+			"scope": ["https://purl.imsglobal.org/spec/lti-ags/scope/score"],
+			"lineitems": "https://platform.example.com/lti/contexts/course-1/lineitems"
+		}
+	}`, got)
+}
+
 func TestLauncher_SignNotice_LeavesOutWhatTheNoticeHasNot(t *testing.T) {
 	t.Parallel()
 
@@ -165,7 +198,7 @@ func TestLauncher_SignNotice_LeavesOutWhatTheNoticeHasNot(t *testing.T) {
 	claims, err := launcher.noticeClaims(createTestTool(), createTestNotice(), "nonce-1", testNow)
 	require.NoError(t, err)
 
-	for _, name := range []string{"sub", lti.ClaimContext, lti.ClaimCustom} {
+	for _, name := range []string{"sub", lti.ClaimRoles, lti.ClaimContext, lti.ClaimCustom, lti.ClaimNamesRoleService, lti.ClaimAGSEndpoint} {
 		assert.NotContains(t, claims, name)
 	}
 }
@@ -181,17 +214,28 @@ func TestLauncher_SignNotice_Rejects(t *testing.T) {
 		notice func(*Notice)
 		err    string
 	}{
-		"no client_id":             {tool: func(tool *Tool) { tool.ClientID = "" }, err: "client_id"},
-		"no deployment":            {notice: func(n *Notice) { n.DeploymentID = "" }, err: "deployment_id"},
-		"a long deployment":        {notice: func(n *Notice) { n.DeploymentID = long }, err: "deployment_id"},
-		"no id":                    {notice: func(n *Notice) { n.ID = "" }, err: "id"},
-		"a long id":                {notice: func(n *Notice) { n.ID = long }, err: "id"},
-		"no type":                  {notice: func(n *Notice) { n.Type = "" }, err: "type"},
-		"no timestamp":             {notice: func(n *Notice) { n.Timestamp = time.Time{} }, err: "timestamp"},
-		"a long sub":               {notice: func(n *Notice) { n.Subject = long }, err: "sub"},
-		"a context without an id":  {notice: func(n *Notice) { n.Context = &lti.LaunchContext{} }, err: "context"},
+		"no client_id":            {tool: func(tool *Tool) { tool.ClientID = "" }, err: "client_id"},
+		"no deployment":           {notice: func(n *Notice) { n.DeploymentID = "" }, err: "deployment_id"},
+		"a long deployment":       {notice: func(n *Notice) { n.DeploymentID = long }, err: "deployment_id"},
+		"no id":                   {notice: func(n *Notice) { n.ID = "" }, err: "id"},
+		"a long id":               {notice: func(n *Notice) { n.ID = long }, err: "id"},
+		"no type":                 {notice: func(n *Notice) { n.Type = "" }, err: "type"},
+		"no timestamp":            {notice: func(n *Notice) { n.Timestamp = time.Time{} }, err: "timestamp"},
+		"a long sub":              {notice: func(n *Notice) { n.Subject = long }, err: "sub"},
+		"a context without an id": {notice: func(n *Notice) { n.Context = &lti.LaunchContext{} }, err: "context"},
+		"memberships without a context": {notice: func(n *Notice) {
+			n.ContextMembershipsURL = "https://platform.example.com/lti/contexts/course-1/memberships"
+		}, err: "needs a context"},
+		"an http memberships url": {notice: func(n *Notice) {
+			n.Context = &lti.LaunchContext{ID: "course-1"}
+			n.ContextMembershipsURL = "http://platform.example.com/lti/contexts/course-1/memberships"
+		}, err: "https"},
+		"an ags endpoint without a context": {notice: func(n *Notice) {
+			n.AGSEndpoint = &lti.AGSEndpoint{Scopes: []lti.Scope{lti.ScopeAGSScore}, LineItems: "https://platform.example.com/lti/contexts/course-1/lineitems"}
+		}, err: "needs a context"},
 		"a nil claim":              {notice: func(n *Notice) { n.Claims = []lti.Claim{nil} }, err: "nil"},
 		"a claim that isn't a url": {notice: func(n *Notice) { n.Claims = []lti.Claim{testNamedClaim{name: "submission"}} }, err: "fully qualified"},
+		"a roles claim":            {notice: func(n *Notice) { n.Claims = []lti.Claim{testNamedClaim{name: lti.ClaimRoles}} }, err: "fully qualified"},
 		"a claim the package sets": {notice: func(n *Notice) { n.Claims = []lti.Claim{testNamedClaim{name: lti.ClaimNotice}} }, err: "fully qualified"},
 		"a launch claim":           {notice: func(n *Notice) { n.Claims = []lti.Claim{testNamedClaim{name: lti.ClaimContext}} }, err: "fully qualified"},
 		"the same claim twice":     {notice: func(n *Notice) { n.Claims = []lti.Claim{testSubmissionClaim{}, testSubmissionClaim{}} }, err: "set twice"},

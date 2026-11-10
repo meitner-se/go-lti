@@ -452,6 +452,7 @@ type noticeHandlersVector struct {
 	Description      string              `json:"description"`
 	NoticeTypes      []lti.NoticeType    `json:"notice_types"`
 	RedirectURIs     []string            `json:"redirect_uris"`
+	Domains          []string            `json:"domains"`
 	Scopes           []lti.Scope         `json:"scopes"`
 	Registered       []lti.NoticeHandler `json:"registered"`
 	Method           string              `json:"method"`
@@ -471,6 +472,7 @@ func TestNewHandler_NoticeHandlers_Vectors(t *testing.T) {
 
 			tool := createTestTool()
 			tool.RedirectURIs = v.RedirectURIs
+			tool.Domains = v.Domains
 
 			s := newNoticeHandlersServer()
 			s.tokens["token-vector"] = v.Scopes

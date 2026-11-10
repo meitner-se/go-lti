@@ -4,7 +4,7 @@
   "platform_notification_service": {
     "platform_notification_service_url": "http://platform.example.com/lti/notice-handlers/deployment-1",
     "notice_types_supported": [
-      "LtiHelloWorldNotice"
+      "LtiContextCopyNotice"
     ]
   },
   "valid": false

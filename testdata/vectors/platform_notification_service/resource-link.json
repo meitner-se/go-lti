@@ -4,7 +4,7 @@
   "platform_notification_service": {
     "platform_notification_service_url": "https://platform.example.com/lti/notice-handlers/deployment-1",
     "notice_types_supported": [
-      "LtiHelloWorldNotice",
+      "LtiContextCopyNotice",
       "LtiAssetProcessorSubmissionNotice"
     ]
   },
@@ -18,7 +18,7 @@
       "https://purl.imsglobal.org/spec/lti/scope/noticehandlers"
     ],
     "notice_types_supported": [
-      "LtiHelloWorldNotice",
+      "LtiContextCopyNotice",
       "LtiAssetProcessorSubmissionNotice"
     ]
   }

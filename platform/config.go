@@ -31,7 +31,9 @@ type Config struct {
 	// Variables are the substitution variables the platform offers in custom parameters.
 	Variables []lti.Variable
 	// NoticeTypes are the notice types the platform sends with the LTI Platform Notification
-	// Service, in the order a tool sees them. A tool may register a handler only for one of them.
+	// Service, named Lti…Notice, such as LtiAssetProcessorSubmissionNotice, in the order a tool
+	// sees them. A tool may register a handler only for one of them. The OpenID configuration lists
+	// them whenever the platform offers the service, as an empty array when there are none.
 	NoticeTypes []lti.NoticeType
 }
 

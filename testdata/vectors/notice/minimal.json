@@ -3,7 +3,7 @@
   "notice": {
     "deployment_id": "deployment-1",
     "id": "3d5c8e2a-0b1f-4c6d-9e7a-2f4b6d8a0c1e",
-    "type": "LtiHelloWorldNotice",
+    "type": "LtiContextCopyNotice",
     "timestamp": "2026-11-10T13:45:12.250+01:00"
   },
   "valid": true,
@@ -15,7 +15,7 @@
     "https://purl.imsglobal.org/spec/lti/claim/notice": {
       "id": "3d5c8e2a-0b1f-4c6d-9e7a-2f4b6d8a0c1e",
       "timestamp": "2026-11-10T13:45:12.250+01:00",
-      "type": "LtiHelloWorldNotice"
+      "type": "LtiContextCopyNotice"
     },
     "https://purl.imsglobal.org/spec/lti/claim/tool_platform": {
       "guid": "platform-1",

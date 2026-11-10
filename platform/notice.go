@@ -17,6 +17,7 @@ import (
 
 	"github.com/meitner-se/go-lti"
 	"github.com/meitner-se/go-lti/internal/jose"
+	"github.com/meitner-se/go-lti/internal/urlcheck"
 	"github.com/meitner-se/go-lti/safehttp"
 )
 
@@ -43,11 +44,19 @@ type Notice struct {
 	Type lti.NoticeType
 	// Timestamp is when the event happened. Its time zone is sent with it.
 	Timestamp time.Time
-	// Subject is the sub of the user the notice is about, as in launches to the same tool, if any.
-	// At most 255 characters.
+	// Subject is the sub of the user who triggered the event, as in launches to the same tool, if
+	// any. It may differ from the user the event's data belongs to. At most 255 characters.
 	Subject string
+	// Roles are Subject's roles, sent when set. Some notice types require them with a sub.
+	Roles []lti.Role
 	// Context is the context the notice is about, if any.
 	Context *lti.LaunchContext
+	// ContextMembershipsURL and AGSEndpoint send the Names and Role Provisioning Services and
+	// Assignment and Grade Services claims for Context, checked as in a launch. A notice should
+	// carry the service claims a launch in the context would when it may be the tool's first sight
+	// of the context.
+	ContextMembershipsURL string
+	AGSEndpoint           *lti.AGSEndpoint
 	// Custom are custom parameters for the tool, if any, sent as they are: notices don't substitute
 	// variables.
 	Custom map[string]string
@@ -58,7 +67,7 @@ type Notice struct {
 
 // SignNotice returns notice as a notice JWT for tool, signed with the platform's key: iss, aud,
 // iat, exp, nonce, the LTI version, deployment_id, the notice claim, tool_platform, and sub,
-// context and custom when the notice has them. Each call signs a new JWT, with a new iat, exp and
+// roles, context, the service claims and custom when the notice has them. Each call signs a new JWT, with a new iat, exp and
 // nonce, as a resend needs. A notice that is incomplete or breaks the spec's limits is an error.
 func (l *Launcher) SignNotice(ctx context.Context, tool Tool, notice Notice) (string, error) {
 	nonce, err := newNonce()
@@ -106,6 +115,17 @@ func (l *Launcher) noticeClaims(tool Tool, notice Notice, nonce string, now time
 		return nil, errors.New("lti: notice sub must be at most 255 characters")
 	case notice.Context != nil && (notice.Context.ID == "" || len(notice.Context.ID) > maxIdentifierLength):
 		return nil, errors.New("lti: notice context needs an id of at most 255 characters")
+	// NRPS 2.0 §3.6.1.1: the service URL matches the context.
+	case notice.ContextMembershipsURL != "" && notice.Context == nil:
+		return nil, errors.New("lti: notice context_memberships_url needs a context")
+	case notice.ContextMembershipsURL != "" && !urlcheck.IsHTTPS(notice.ContextMembershipsURL):
+		return nil, errors.New("lti: notice context_memberships_url must be an absolute https url")
+	}
+
+	if notice.AGSEndpoint != nil {
+		if err := validateAGSEndpoint(*notice.AGSEndpoint, notice.Context); err != nil {
+			return nil, err
+		}
 	}
 
 	claims := map[string]any{
@@ -122,8 +142,23 @@ func (l *Launcher) noticeClaims(tool Tool, notice Notice, nonce string, now time
 
 	setIfNotEmpty(claims, "sub", notice.Subject)
 
+	if len(notice.Roles) > 0 {
+		claims[lti.ClaimRoles] = notice.Roles
+	}
+
 	if notice.Context != nil {
 		claims[lti.ClaimContext] = *notice.Context
+	}
+
+	if notice.ContextMembershipsURL != "" {
+		claims[lti.ClaimNamesRoleService] = namesRoleService{
+			ContextMembershipsURL: notice.ContextMembershipsURL,
+			ServiceVersions:       []string{namesRoleServiceVersion},
+		}
+	}
+
+	if notice.AGSEndpoint != nil {
+		claims[lti.ClaimAGSEndpoint] = *notice.AGSEndpoint
 	}
 
 	if len(notice.Custom) > 0 {

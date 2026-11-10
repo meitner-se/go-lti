@@ -1,12 +1,16 @@
 {
   "description": "A handler for a type the platform no longer supports is left out.",
   "notice_types": [
-    "LtiHelloWorldNotice",
+    "LtiContextCopyNotice",
     "LtiAssetProcessorSubmissionNotice"
   ],
   "redirect_uris": [
     "https://tool.example.com/launch",
     "https://Assets.Example.org:8443/lti/launch"
+  ],
+  "domains": [
+    "tool.example.com",
+    "hooks.example.net"
   ],
   "scopes": [
     "https://purl.imsglobal.org/spec/lti/scope/noticehandlers"
@@ -24,7 +28,7 @@
     "deployment_id": "deployment-1",
     "notice_handlers": [
       {
-        "notice_type": "LtiHelloWorldNotice",
+        "notice_type": "LtiContextCopyNotice",
         "handler": ""
       },
       {

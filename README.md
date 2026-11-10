@@ -250,11 +250,11 @@ A Deep Linking `ltiResourceLink` can ask for a line item. go-lti checks it has a
 
 The LTI Platform Notification Service lets the platform tell a tool about events, such as a submission, outside a launch: the tool registers a handler URL for each notice type, and the platform posts signed notices to it. go-lti serves the registration endpoint, adds the launch claim and signs notices; which events make a notice, where the handlers are kept and when to send again are the platform's.
 
-List the notice types your platform sends in `cfg.NoticeTypes`, set `Paths.NoticeHandlers` to a prefix, and a deployment's registration endpoint is at the issuer plus the prefix plus `/{deployment}`. `cfg.PlatformNotificationService` builds the launch's claim from them, with `service_versions` `["1.0"]`, the `lti.ScopeNoticeHandlers` scope and the notice types, `[]` when there are none; a launch and a Deep Linking request carry it when you set it. The OpenID configuration lists `notice_types_supported` when there are any.
+List the notice types your platform sends in `cfg.NoticeTypes`, named `Lti…Notice`, such as `LtiAssetProcessorSubmissionNotice`; the service itself defines none. Set `Paths.NoticeHandlers` to a prefix, and a deployment's registration endpoint is at the issuer plus the prefix plus `/{deployment}`, the same for every context in the deployment. `cfg.PlatformNotificationService` builds the claim from them, with `service_versions` `["1.0"]`, the `lti.ScopeNoticeHandlers` scope and the notice types, `[]` when there are none. A launch and a Deep Linking request carry it when you set it; set your own `lti.PlatformNotificationService` to offer a deployment other types. Whenever the service is offered, the OpenID configuration lists `notice_types_supported`, `[]` when there are none; add `lti.ScopeNoticeHandlers` to `cfg.Scopes` too.
 
 ```go
 cfg.Paths.NoticeHandlers = "/notice-handlers" // https://lms.example.com/lti/notice-handlers/{deployment}
-cfg.NoticeTypes = []lti.NoticeType{"LtiHelloWorldNotice"}
+cfg.NoticeTypes = []lti.NoticeType{"LtiContextCopyNotice"}
 
 pns, err := cfg.PlatformNotificationService(deploymentID)
 
@@ -264,7 +264,7 @@ Common: lti.Common{
 },
 ```
 
-`NewHandler` serves the endpoint when you set `Paths.NoticeHandlers`, `ReadNoticeHandlers` and `ReplaceNoticeHandler` together, with `AuthorizeService`, for a token granted `lti.ScopeNoticeHandlers`. A GET answers `{client_id, deployment_id, notice_handlers}` with every type in `cfg.NoticeTypes`, in that order, and `""` where the tool has no handler. A PUT of `{notice_type, handler, max_batch_size}` replaces the handler of one type, or removes it when `handler` is `""`, and is answered with the type and the handler. go-lti refuses with 400 a type that isn't in `cfg.NoticeTypes`, a handler that isn't an https URL on the host of one of the tool's redirect URIs, and a `max_batch_size` that isn't a positive integer.
+`NewHandler` serves the endpoint when you set `Paths.NoticeHandlers`, `ReadNoticeHandlers` and `ReplaceNoticeHandler` together, with `AuthorizeService`, for a token granted `lti.ScopeNoticeHandlers`. A GET answers `{client_id, deployment_id, notice_handlers}` with every type in `cfg.NoticeTypes`, in that order, and `""` where the tool has no handler. A PUT of `{notice_type, handler, max_batch_size}` replaces the handler of one type, or removes it when `handler` is `""`, and is answered with the type and the handler. go-lti refuses with 400 a type that isn't in `cfg.NoticeTypes`, a handler that isn't an https URL on the tool's own domain (exactly the host of one of its redirect URIs or one of its `Domains`, not a subdomain; see `platform.OnToolHosts`), and a `max_batch_size` that isn't a positive integer. Keep registrations while a tool is disabled, and drop them only when it or the deployment is deleted.
 
 ```go
 handler, err := platform.NewHandler(cfg, platform.Handlers{
@@ -291,15 +291,17 @@ launcher, err := platform.NewLauncher(cfg, keys)
 jwt, err := launcher.SignNotice(ctx, tool, platform.Notice{
 	DeploymentID: deploymentID,
 	ID:           noticeID, // unique for ever in the deployment, and the same on every resend
-	Type:         "LtiHelloWorldNotice",
+	Type:         "LtiAssetProcessorSubmissionNotice",
 	Timestamp:    when,     // when the event happened
-	// Subject, Context, Custom and the type's own Claims when the notice has them.
+	// Subject (who triggered it) and Roles, Context, Custom and the type's own Claims when the
+	// notice has them, and ContextMembershipsURL and AGSEndpoint when it may be the tool's first
+	// sight of the context.
 })
 
 err = platform.PostNotices(ctx, nil, handlerURL, lti.NewNoticeEnvelope(jwt)) // nil: a safehttp client
 ```
 
-A notice JWT carries `iss`, `aud`, `iat`, `exp` (`platform.NoticeTTL` after `iat`), `nonce`, the LTI version, `deployment_id`, the `notice` claim (`id`, `timestamp` with its time zone, `type`) and `tool_platform`, plus `sub`, `context` and `custom` when the notice has them. An envelope holds notices of one type only, and no more of them than the tool's `max_batch_size`. A 2xx answer is a delivery; any other status is a `*platform.NoticeDeliveryError` with its `StatusCode`. Delivery is at least once: to send again, call `SignNotice` again with the same notice, which signs a new JWT with a new `iat`, `exp` and `nonce`.
+A notice JWT carries `iss`, `aud`, `iat`, `exp` (`platform.NoticeTTL` after `iat`), `nonce`, the LTI version, `deployment_id`, the `notice` claim (`id`, `timestamp` with its time zone, `type`) and `tool_platform`, plus `sub`, `roles`, `context`, the Names and Role Provisioning Services and Assignment and Grade Services claims, and `custom` when the notice has them. An envelope holds notices of one type only, and no more of them than the tool's `max_batch_size`. A 2xx answer is a delivery; any other status is a `*platform.NoticeDeliveryError` with its `StatusCode`. Delivery is at least once: to send again, call `SignNotice` again with the same notice, which signs a new JWT with a new `iat`, `exp` and `nonce`.
 
 ## Errors
 

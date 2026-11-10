@@ -64,7 +64,7 @@ func TestConfig_OpenIDConfiguration_AdvertisesNoticeTypes(t *testing.T) {
 	t.Parallel()
 
 	cfg := createTestConfig()
-	cfg.NoticeTypes = []lti.NoticeType{"LtiHelloWorldNotice", "LtiAssetProcessorSubmissionNotice"}
+	cfg.NoticeTypes = []lti.NoticeType{"LtiContextCopyNotice", "LtiAssetProcessorSubmissionNotice"}
 
 	configuration, err := cfg.OpenIDConfiguration()
 	require.NoError(t, err)
@@ -73,7 +73,37 @@ func TestConfig_OpenIDConfiguration_AdvertisesNoticeTypes(t *testing.T) {
 
 	var got map[string]any
 	require.NoError(t, json.Unmarshal(body, &got))
-	assert.Equal(t, []any{"LtiHelloWorldNotice", "LtiAssetProcessorSubmissionNotice"}, got["notice_types_supported"])
+	assert.Equal(t, []any{"LtiContextCopyNotice", "LtiAssetProcessorSubmissionNotice"}, got["notice_types_supported"])
+}
+
+func TestConfig_OpenIDConfiguration_ListsNoNoticeTypesOnlyWhenTheServiceIsOffered(t *testing.T) {
+	t.Parallel()
+
+	noticeTypes := func(cfg Config) (any, bool) {
+		t.Helper()
+
+		configuration, err := cfg.OpenIDConfiguration()
+		require.NoError(t, err)
+
+		body, _ := json.Marshal(configuration.PlatformConfiguration)
+
+		var got map[string]any
+		require.NoError(t, json.Unmarshal(body, &got))
+
+		value, ok := got["notice_types_supported"]
+
+		return value, ok
+	}
+
+	_, ok := noticeTypes(createTestConfig())
+	assert.False(t, ok, "left out when the platform doesn't offer the service")
+
+	cfg := createTestConfig()
+	cfg.Paths.NoticeHandlers = "/notice-handlers"
+
+	value, ok := noticeTypes(cfg)
+	require.True(t, ok, "listed when the platform offers the service")
+	assert.Equal(t, []any{}, value, "as an empty array when it sends no types")
 }
 
 func TestConfig_OpenIDConfiguration_Rejects(t *testing.T) {
