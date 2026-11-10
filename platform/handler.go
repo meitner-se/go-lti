@@ -141,6 +141,26 @@ type Handlers struct {
 	// ListResults returns a page of a line item's results, filtered by the request, for a client
 	// granted lti.ScopeAGSResultReadOnly.
 	ListResults func(r *http.Request, client ServiceClient, req ResultsRequest) (ResultsPage, error)
+	// ReadNoticeHandlers and ReplaceNoticeHandler serve the LTI Platform Notification Service's
+	// notice handler endpoint of the deployment with deploymentID, for a client granted
+	// lti.ScopeNoticeHandlers. Set Paths.NoticeHandlers and both of them together, with
+	// AuthorizeService, to serve it. The handlers are the platform's to keep, per tool and
+	// deployment; Config.NoticeTypes are the types a tool may register for.
+	//
+	// ReadNoticeHandlers returns the deployment's tool and its handlers. Check that client may
+	// manage the deployment, such as by its being client's own, and return an error that is or
+	// wraps ErrDeploymentNotFound for a deployment that doesn't exist (a 404) or
+	// ErrNoticeHandlersForbidden for one client may not manage (a 403). Any other error is answered
+	// as for AuthorizeService.
+	ReadNoticeHandlers func(r *http.Request, client ServiceClient, deploymentID string) (DeploymentNoticeHandlers, error)
+	// ReplaceNoticeHandler saves client's handler for one notice type in the deployment, or removes
+	// it when registration.Handler is "". go-lti has checked, with ReadNoticeHandlers, that client
+	// may manage the deployment, that the notice type is one of Config.NoticeTypes, that the handler
+	// is an https URL on the host of one of the tool's redirect URIs, and that MaxBatchSize is 0
+	// (not given) or positive. Return an *lti.Error with lti.ErrorInvalidRequest for a MaxBatchSize
+	// the platform can't honour (a 400), or ErrNoticeHandlersForbidden (a 403). Any other error is
+	// answered as for AuthorizeService.
+	ReplaceNoticeHandler func(r *http.Request, client ServiceClient, deploymentID string, registration lti.NoticeHandlerRegistration) error
 	// Logger, when set, logs every error a tool or browser is answered with: a rejection at Warn
 	// with its code, any other error at Error.
 	Logger *slog.Logger
@@ -171,14 +191,19 @@ type Handlers struct {
 //     remove one; POST "/{lineitem}/scores" saves a score and GET "/{lineitem}/results" answers a
 //     page of results. Served with Paths.ContextLineItems and the seven line item hooks, which need
 //     AuthorizeService.
+//   - Paths.NoticeHandlers plus "/{deployment}": the LTI Platform Notification Service, for a tool
+//     whose access token AuthorizeService finds granted lti.ScopeNoticeHandlers. GET answers the
+//     deployment's notice handlers and PUT replaces the handler of one notice type. Served with
+//     Paths.NoticeHandlers, ReadNoticeHandlers and ReplaceNoticeHandler, which need AuthorizeService.
 //
 // Mount it to receive every request under the issuer's path, with the path unchanged. Any other
 // path is a 404 and any other method a 405. An error page sent to a browser is plain text with
 // Cache-Control: no-store and a Content-Security-Policy that allows nothing. It fails when cfg
 // can't make an OpenID configuration, h has no Register, h has only one of Keys and Launch, h has
 // only some of the Deep Linking fields, only one of Paths.ContextMemberships and ListContextMembers
-// is set, only some of Paths.ContextLineItems and the line item hooks are set, a service is served
-// without AuthorizeService, or AuthorizeService is set without any service that uses it.
+// is set, only some of Paths.ContextLineItems and the line item hooks are set, only some of
+// Paths.NoticeHandlers and the notice handler hooks are set, a service is served without
+// AuthorizeService, or AuthorizeService is set without any service that uses it.
 func NewHandler(cfg Config, h Handlers) (http.Handler, error) {
 	if h.Register == nil {
 		return nil, errors.New("lti: the handler needs a Register function")
@@ -205,8 +230,13 @@ func NewHandler(cfg Config, h Handlers) (http.Handler, error) {
 		return nil, errors.New("lti: the handler needs all of Paths.ContextLineItems, ListLineItems, GetLineItem, CreateLineItem, UpdateLineItem, DeleteLineItem, PostScore and ListResults to serve assignment and grade services, or none")
 	}
 
+	noticeHandlers := []bool{cfg.Paths.NoticeHandlers != "", h.ReadNoticeHandlers != nil, h.ReplaceNoticeHandler != nil}
+	if slices.Contains(noticeHandlers, true) && slices.Contains(noticeHandlers, false) {
+		return nil, errors.New("lti: the handler needs all of Paths.NoticeHandlers, ReadNoticeHandlers and ReplaceNoticeHandler to serve the platform notification service, or none")
+	}
+
 	// Each LTI service endpoint the handler serves, all of which AuthorizeService authorizes.
-	services := []bool{h.ListContextMembers != nil, h.ListLineItems != nil}
+	services := []bool{h.ListContextMembers != nil, h.ListLineItems != nil, h.ReadNoticeHandlers != nil}
 	if slices.Contains(services, true) && h.AuthorizeService == nil {
 		return nil, errors.New("lti: the handler needs AuthorizeService to serve LTI services")
 	}
@@ -274,6 +304,12 @@ func NewHandler(cfg Config, h Handlers) (http.Handler, error) {
 		mux.HandleFunc("DELETE "+lineItems+"/{lineitem}", e.deleteLineItem)
 		mux.HandleFunc("POST "+lineItems+"/{lineitem}/scores", e.postScore)
 		mux.HandleFunc("GET "+lineItems+"/{lineitem}/results", e.listResults)
+	}
+
+	if h.ReadNoticeHandlers != nil {
+		noticeHandlers := issuer.Path + cfg.Paths.NoticeHandlers + "/{deployment}"
+		mux.HandleFunc("GET "+noticeHandlers, e.noticeHandlers)
+		mux.HandleFunc("PUT "+noticeHandlers, e.replaceNoticeHandler)
 	}
 
 	return mux, nil

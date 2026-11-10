@@ -1,0 +1,30 @@
+{
+  "description": "An empty handler removes the type's handler.",
+  "notice_types": [
+    "LtiHelloWorldNotice",
+    "LtiAssetProcessorSubmissionNotice"
+  ],
+  "redirect_uris": [
+    "https://tool.example.com/launch",
+    "https://Assets.Example.org:8443/lti/launch"
+  ],
+  "scopes": [
+    "https://purl.imsglobal.org/spec/lti/scope/noticehandlers"
+  ],
+  "registered": [
+    {
+      "notice_type": "LtiHelloWorldNotice",
+      "handler": "https://tool.example.com/notices"
+    }
+  ],
+  "method": "PUT",
+  "body": {
+    "notice_type": "LtiHelloWorldNotice",
+    "handler": ""
+  },
+  "expect_status": 200,
+  "expect_body": {
+    "notice_type": "LtiHelloWorldNotice",
+    "handler": ""
+  }
+}

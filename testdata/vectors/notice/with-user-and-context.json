@@ -1,0 +1,43 @@
+{
+  "description": "A notice about a user in a context carries sub, context and custom, as sent.",
+  "notice": {
+    "deployment_id": "deployment-1",
+    "id": "notice-2",
+    "type": "LtiAssetProcessorSubmissionNotice",
+    "timestamp": "2026-11-10T12:45:12Z",
+    "sub": "3f2a8c1e-7d4b-4e8f-9a6c-1b2d3e4f5a6b",
+    "context": {
+      "id": "course-1",
+      "title": "Biology 1"
+    },
+    "custom": {
+      "course": "$Context.id"
+    }
+  },
+  "valid": true,
+  "expect_claims": {
+    "iss": "https://platform.example.com/lti",
+    "aud": "client-1",
+    "sub": "3f2a8c1e-7d4b-4e8f-9a6c-1b2d3e4f5a6b",
+    "https://purl.imsglobal.org/spec/lti/claim/version": "1.3.0",
+    "https://purl.imsglobal.org/spec/lti/claim/deployment_id": "deployment-1",
+    "https://purl.imsglobal.org/spec/lti/claim/notice": {
+      "id": "notice-2",
+      "timestamp": "2026-11-10T12:45:12.000Z",
+      "type": "LtiAssetProcessorSubmissionNotice"
+    },
+    "https://purl.imsglobal.org/spec/lti/claim/context": {
+      "id": "course-1",
+      "title": "Biology 1"
+    },
+    "https://purl.imsglobal.org/spec/lti/claim/custom": {
+      "course": "$Context.id"
+    },
+    "https://purl.imsglobal.org/spec/lti/claim/tool_platform": {
+      "guid": "platform-1",
+      "name": "Example LMS",
+      "version": "1.0.0",
+      "product_family_code": "example"
+    }
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "description": "max_batch_size must be a positive integer.",
+  "notice_types": [
+    "LtiHelloWorldNotice",
+    "LtiAssetProcessorSubmissionNotice"
+  ],
+  "redirect_uris": [
+    "https://tool.example.com/launch",
+    "https://Assets.Example.org:8443/lti/launch"
+  ],
+  "scopes": [
+    "https://purl.imsglobal.org/spec/lti/scope/noticehandlers"
+  ],
+  "registered": [],
+  "method": "PUT",
+  "body": {
+    "notice_type": "LtiHelloWorldNotice",
+    "handler": "https://tool.example.com/notices",
+    "max_batch_size": 0
+  },
+  "expect_status": 400,
+  "error_code": "invalid_request",
+  "error_description": "max_batch_size must be a positive integer"
+}

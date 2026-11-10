@@ -1,0 +1,27 @@
+{
+  "description": "A notice with only the required claims.",
+  "notice": {
+    "deployment_id": "deployment-1",
+    "id": "3d5c8e2a-0b1f-4c6d-9e7a-2f4b6d8a0c1e",
+    "type": "LtiHelloWorldNotice",
+    "timestamp": "2026-11-10T13:45:12.250+01:00"
+  },
+  "valid": true,
+  "expect_claims": {
+    "iss": "https://platform.example.com/lti",
+    "aud": "client-1",
+    "https://purl.imsglobal.org/spec/lti/claim/version": "1.3.0",
+    "https://purl.imsglobal.org/spec/lti/claim/deployment_id": "deployment-1",
+    "https://purl.imsglobal.org/spec/lti/claim/notice": {
+      "id": "3d5c8e2a-0b1f-4c6d-9e7a-2f4b6d8a0c1e",
+      "timestamp": "2026-11-10T13:45:12.250+01:00",
+      "type": "LtiHelloWorldNotice"
+    },
+    "https://purl.imsglobal.org/spec/lti/claim/tool_platform": {
+      "guid": "platform-1",
+      "name": "Example LMS",
+      "version": "1.0.0",
+      "product_family_code": "example"
+    }
+  }
+}

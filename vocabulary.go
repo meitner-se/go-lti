@@ -165,13 +165,16 @@ func ParseContentItemType(s string) (ContentItemType, error) {
 // Scope is an LTI service scope.
 type Scope string
 
-// Assignment and Grade Services 2.0 and Names and Role Provisioning Services 2.0 scopes.
+// Assignment and Grade Services 2.0, Names and Role Provisioning Services 2.0 and LTI Platform
+// Notification Service scopes.
 const (
 	ScopeAGSLineItem         Scope = "https://purl.imsglobal.org/spec/lti-ags/scope/lineitem"
 	ScopeAGSLineItemReadOnly Scope = "https://purl.imsglobal.org/spec/lti-ags/scope/lineitem.readonly"
 	ScopeAGSResultReadOnly   Scope = "https://purl.imsglobal.org/spec/lti-ags/scope/result.readonly"
 	ScopeAGSScore            Scope = "https://purl.imsglobal.org/spec/lti-ags/scope/score"
 	ScopeNRPSMembershipRead  Scope = "https://purl.imsglobal.org/spec/lti-nrps/scope/contextmembership.readonly"
+	// ScopeNoticeHandlers lets a tool read and replace its notice handlers.
+	ScopeNoticeHandlers Scope = "https://purl.imsglobal.org/spec/lti/scope/noticehandlers"
 )
 
 // Variable is a substitution variable for custom parameter values (LTI 1.3 Appendix B),

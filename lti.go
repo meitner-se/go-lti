@@ -9,7 +9,7 @@ import (
 // Version is the LTI version of every message this package sends and accepts.
 const Version = "1.3.0"
 
-// ErrorCode is an error code from OAuth 2.0 (RFC 6749 §4.2.2.1, §5.2), OpenID Connect Core §3.1.2.6,
+// ErrorCode is an error code from OAuth 2.0 (RFC 6749 §4.1.2.1, §4.2.2.1, §5.2), OpenID Connect Core §3.1.2.6,
 // Dynamic Client Registration (RFC 7591 §3.2.2) or Bearer tokens (RFC 6750 §3.1).
 type ErrorCode string
 
@@ -26,6 +26,7 @@ const (
 	ErrorInvalidRedirectURI      ErrorCode = "invalid_redirect_uri"
 	ErrorInvalidToken            ErrorCode = "invalid_token"
 	ErrorInsufficientScope       ErrorCode = "insufficient_scope"
+	ErrorAccessDenied            ErrorCode = "access_denied"
 	ErrorServerError             ErrorCode = "server_error"
 )
 
@@ -59,12 +60,12 @@ func (e *Error) Error() string {
 }
 
 // StatusCode returns the HTTP status to answer with: 401 for invalid_client and invalid_token,
-// 403 for insufficient_scope, 500 for server_error, 400 otherwise.
+// 403 for insufficient_scope and access_denied, 500 for server_error, 400 otherwise.
 func (e *Error) StatusCode() int {
 	switch e.Code {
 	case ErrorInvalidClient, ErrorInvalidToken:
 		return http.StatusUnauthorized
-	case ErrorInsufficientScope:
+	case ErrorInsufficientScope, ErrorAccessDenied:
 		return http.StatusForbidden
 	case ErrorServerError:
 		return http.StatusInternalServerError

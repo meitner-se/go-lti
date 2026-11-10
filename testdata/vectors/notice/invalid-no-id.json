@@ -1,0 +1,10 @@
+{
+  "description": "A notice needs an id.",
+  "notice": {
+    "deployment_id": "deployment-1",
+    "id": "",
+    "type": "LtiHelloWorldNotice",
+    "timestamp": "2026-11-10T13:45:12Z"
+  },
+  "valid": false
+}

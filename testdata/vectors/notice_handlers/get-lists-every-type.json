@@ -1,0 +1,36 @@
+{
+  "description": "A GET lists every notice type the platform supports, in its order, with an empty handler where the tool has none.",
+  "notice_types": [
+    "LtiHelloWorldNotice",
+    "LtiAssetProcessorSubmissionNotice"
+  ],
+  "redirect_uris": [
+    "https://tool.example.com/launch",
+    "https://Assets.Example.org:8443/lti/launch"
+  ],
+  "scopes": [
+    "https://purl.imsglobal.org/spec/lti/scope/noticehandlers"
+  ],
+  "registered": [
+    {
+      "notice_type": "LtiAssetProcessorSubmissionNotice",
+      "handler": "https://tool.example.com/notices"
+    }
+  ],
+  "method": "GET",
+  "expect_status": 200,
+  "expect_body": {
+    "client_id": "client-1",
+    "deployment_id": "deployment-1",
+    "notice_handlers": [
+      {
+        "notice_type": "LtiHelloWorldNotice",
+        "handler": ""
+      },
+      {
+        "notice_type": "LtiAssetProcessorSubmissionNotice",
+        "handler": "https://tool.example.com/notices"
+      }
+    ]
+  }
+}

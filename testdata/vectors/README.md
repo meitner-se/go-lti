@@ -71,6 +71,39 @@ launch sends, or `null` when it sends none. An invalid case must be refused: the
 launch's context (NRPS 2.0 §3.6.1.1), so a launch without a context can't have one, and it must be
 an absolute https URL.
 
+## `platform_notification_service/`
+
+A launch message and the LTI Platform Notification Service claim it is sent with. `message_type` is
+`LtiResourceLinkRequest` or `LtiDeepLinkingRequest`, and `platform_notification_service` is the
+`platform_notification_service_url` and `notice_types_supported` the platform sets, or `null` for
+none. A valid case has `expect_claim`: the
+`https://purl.imsglobal.org/spec/lti/claim/platformnotificationservice` claim the launch sends, with
+`service_versions` `["1.0"]`, the `noticehandlers` scope, and `notice_types_supported` as `[]` when
+the platform sends none; or `null` when it sends no claim. An invalid case must be refused: the URL
+must be an absolute https URL.
+
+## `notice_handlers/`
+
+A tool's request to its notice handler registration endpoint, with the platform's supported
+`notice_types`, the tool's `redirect_uris`, the `scopes` its access token was granted and the
+handlers already `registered` for client `client-1` and deployment `deployment-1`. `method` is
+`GET` or `PUT`, with the PUT's `body`. `expect_status` is the answer's status: a success has
+`expect_body`, and a refusal has the OAuth 2.0 `error_code` and, for a 400, its
+`error_description`. A GET lists every supported type, in order, with `""` where no handler is
+registered. A PUT is refused for an unsupported type, a handler that isn't an absolute https URL on
+the host of one of the tool's redirect URIs (subdomains are other hosts; port, path and case don't
+matter), and a `max_batch_size` that isn't a positive integer. An empty handler removes the type's
+handler.
+
+## `notice/`
+
+A notice the platform signs for tool `client-1` as platform issuer
+`https://platform.example.com/lti`, product `platform-1` (`Example LMS`, family `example`, version
+`1.0.0`). A valid case has `expect_claims`: the notice JWT's claims without `iat`, `exp` and
+`nonce`, which are new on every signature. The notice's `timestamp` keeps its time zone and is
+written to the millisecond. An invalid case must be refused: a notice needs a `deployment_id`, an
+`id`, a `type` and a `timestamp`.
+
 ## `substitution/`
 
 A launch message and the `custom` parameters it is sent with, as configured. `message_type` is

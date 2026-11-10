@@ -1,0 +1,9 @@
+{
+  "description": "A notice needs the timestamp of its event.",
+  "notice": {
+    "deployment_id": "deployment-1",
+    "id": "notice-1",
+    "type": "LtiHelloWorldNotice"
+  },
+  "valid": false
+}

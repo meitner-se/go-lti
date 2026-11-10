@@ -60,6 +60,22 @@ func TestConfig_OpenIDConfiguration_AdvertisesScopesAndVariables(t *testing.T) {
 	assert.Equal(t, []lti.Variable{"Context.id", "ResourceLink.id"}, configuration.PlatformConfiguration.Variables)
 }
 
+func TestConfig_OpenIDConfiguration_AdvertisesNoticeTypes(t *testing.T) {
+	t.Parallel()
+
+	cfg := createTestConfig()
+	cfg.NoticeTypes = []lti.NoticeType{"LtiHelloWorldNotice", "LtiAssetProcessorSubmissionNotice"}
+
+	configuration, err := cfg.OpenIDConfiguration()
+	require.NoError(t, err)
+
+	body, _ := json.Marshal(configuration.PlatformConfiguration)
+
+	var got map[string]any
+	require.NoError(t, json.Unmarshal(body, &got))
+	assert.Equal(t, []any{"LtiHelloWorldNotice", "LtiAssetProcessorSubmissionNotice"}, got["notice_types_supported"])
+}
+
 func TestConfig_OpenIDConfiguration_Rejects(t *testing.T) {
 	t.Parallel()
 

@@ -2,7 +2,7 @@
 
 LTI 1.3 and LTI Advantage for Go, for the platform side: the system that launches tools, such as an LMS.
 
-It covers the launch (the OIDC third-party login flow and the signed id_token), verifying Deep Linking 2.0 responses, Dynamic Registration 1.0, the platform's OpenID configuration and JWKS, Names and Role Provisioning Services 2.0 (the launch claim and the memberships endpoint) and Assignment and Grade Services 2.0 (the launch claim and the line item, score and result endpoints). LTI 1.1 is not supported.
+It covers the launch (the OIDC third-party login flow and the signed id_token), verifying Deep Linking 2.0 responses, Dynamic Registration 1.0, the platform's OpenID configuration and JWKS, Names and Role Provisioning Services 2.0 (the launch claim and the memberships endpoint), Assignment and Grade Services 2.0 (the launch claim and the line item, score and result endpoints) and the LTI Platform Notification Service (the launch claim, the notice handler endpoint and signed notices). LTI 1.1 is not supported.
 
 ```sh
 go get github.com/meitner-se/go-lti
@@ -14,8 +14,8 @@ Work in progress: the API may change until v1.0.0.
 
 | Package | What it does |
 | -- | -- |
-| `lti` | Types both sides of LTI share: messages and claims, content items, membership containers, line items, scores and results, roles, scopes and other spec vocabulary, signing keys, and `Error`. |
-| `platform` | The platform side: its `Config`, its record of each `Tool`, the launch flow, Deep Linking verification, Dynamic Registration, the OpenID configuration, the Names and Role Provisioning Services endpoint and the Assignment and Grade Services endpoints. |
+| `lti` | Types both sides of LTI share: messages and claims, content items, membership containers, line items, scores and results, notice handlers and notices, roles, scopes and other spec vocabulary, signing keys, and `Error`. |
+| `platform` | The platform side: its `Config`, its record of each `Tool`, the launch flow, Deep Linking verification, Dynamic Registration, the OpenID configuration, the Names and Role Provisioning Services endpoint, the Assignment and Grade Services endpoints, and the Platform Notification Service endpoint and notices. |
 | `jwks` | Publishes the platform's keys and fetches tools' keys, with caching. |
 | `safehttp` | An HTTP client that won't connect to private or internal addresses, for URLs a tool controls. |
 | `ltitest` | Test keys, a JWKS server and an in-memory nonce store. |
@@ -246,13 +246,68 @@ Every answer has `Cache-Control: no-store`. Errors are OAuth 2.0's JSON error re
 
 A Deep Linking `ltiResourceLink` can ask for a line item. go-lti checks it has a positive `scoreMaximum` and keeps it as `ContentItem.LineItem`, which decodes into an `lti.LineItem`.
 
+## Platform Notification Service
+
+The LTI Platform Notification Service lets the platform tell a tool about events, such as a submission, outside a launch: the tool registers a handler URL for each notice type, and the platform posts signed notices to it. go-lti serves the registration endpoint, adds the launch claim and signs notices; which events make a notice, where the handlers are kept and when to send again are the platform's.
+
+List the notice types your platform sends in `cfg.NoticeTypes`, set `Paths.NoticeHandlers` to a prefix, and a deployment's registration endpoint is at the issuer plus the prefix plus `/{deployment}`. `cfg.PlatformNotificationService` builds the launch's claim from them, with `service_versions` `["1.0"]`, the `lti.ScopeNoticeHandlers` scope and the notice types, `[]` when there are none; a launch and a Deep Linking request carry it when you set it. The OpenID configuration lists `notice_types_supported` when there are any.
+
+```go
+cfg.Paths.NoticeHandlers = "/notice-handlers" // https://lms.example.com/lti/notice-handlers/{deployment}
+cfg.NoticeTypes = []lti.NoticeType{"LtiHelloWorldNotice"}
+
+pns, err := cfg.PlatformNotificationService(deploymentID)
+
+Common: lti.Common{
+	// ...
+	PlatformNotificationService: pns,
+},
+```
+
+`NewHandler` serves the endpoint when you set `Paths.NoticeHandlers`, `ReadNoticeHandlers` and `ReplaceNoticeHandler` together, with `AuthorizeService`, for a token granted `lti.ScopeNoticeHandlers`. A GET answers `{client_id, deployment_id, notice_handlers}` with every type in `cfg.NoticeTypes`, in that order, and `""` where the tool has no handler. A PUT of `{notice_type, handler, max_batch_size}` replaces the handler of one type, or removes it when `handler` is `""`, and is answered with the type and the handler. go-lti refuses with 400 a type that isn't in `cfg.NoticeTypes`, a handler that isn't an https URL on the host of one of the tool's redirect URIs, and a `max_batch_size` that isn't a positive integer.
+
+```go
+handler, err := platform.NewHandler(cfg, platform.Handlers{
+	Register:         register,
+	AuthorizeService: authorizeService, // as for Names and Role Provisioning Services
+	ReadNoticeHandlers: func(r *http.Request, client platform.ServiceClient, deploymentID string) (platform.DeploymentNoticeHandlers, error) {
+		// Check that the deployment is client's, then read its tool and handlers.
+		return platform.DeploymentNoticeHandlers{Tool: tool, Handlers: handlers}, nil
+		// or platform.ErrDeploymentNotFound (404), or platform.ErrNoticeHandlersForbidden (403)
+	},
+	ReplaceNoticeHandler: func(r *http.Request, client platform.ServiceClient, deploymentID string, registration lti.NoticeHandlerRegistration) error {
+		// Keep registration.Handler for registration.NoticeType, or remove it when it is "".
+		return nil
+		// or an *lti.Error with lti.ErrorInvalidRequest for a MaxBatchSize you can't honour (400)
+	},
+})
+```
+
+Send a notice by signing it with the platform's key and posting it to the tool's handler for its type:
+
+```go
+launcher, err := platform.NewLauncher(cfg, keys)
+
+jwt, err := launcher.SignNotice(ctx, tool, platform.Notice{
+	DeploymentID: deploymentID,
+	ID:           noticeID, // unique for ever in the deployment, and the same on every resend
+	Type:         "LtiHelloWorldNotice",
+	Timestamp:    when,     // when the event happened
+	// Subject, Context, Custom and the type's own Claims when the notice has them.
+})
+
+err = platform.PostNotices(ctx, nil, handlerURL, lti.NewNoticeEnvelope(jwt)) // nil: a safehttp client
+```
+
+A notice JWT carries `iss`, `aud`, `iat`, `exp` (`platform.NoticeTTL` after `iat`), `nonce`, the LTI version, `deployment_id`, the `notice` claim (`id`, `timestamp` with its time zone, `type`) and `tool_platform`, plus `sub`, `context` and `custom` when the notice has them. An envelope holds notices of one type only, and no more of them than the tool's `max_batch_size`. A 2xx answer is a delivery; any other status is a `*platform.NoticeDeliveryError` with its `StatusCode`. Delivery is at least once: to send again, call `SignNotice` again with the same notice, which signs a new JWT with a new `iat`, `exp` and `nonce`.
+
 ## Errors
 
 A rejection of something a tool or a browser sent is an `*lti.Error` with the spec's error code (such as `invalid_request` or `invalid_redirect_uri`) and a description that is safe to send back. Any other error is your platform's own, such as a signer or network failure.
 
 ## Test vectors
 
-`testdata/vectors/` holds JSON cases with their expected results, for JWKS documents, Dynamic Registration requests, Deep Linking responses, custom parameter substitution and the Names and Role Provisioning Services and Assignment and Grade Services launch claims. go-lti's tests run them, and an implementation in another language can run the same cases. See [testdata/vectors/README.md](testdata/vectors/README.md).
+`testdata/vectors/` holds JSON cases with their expected results, for JWKS documents, Dynamic Registration requests, Deep Linking responses, custom parameter substitution, the Names and Role Provisioning Services, Assignment and Grade Services and Platform Notification Service launch claims, the notice handler endpoint and notice JWTs. go-lti's tests run them, and an implementation in another language can run the same cases. See [testdata/vectors/README.md](testdata/vectors/README.md).
 
 ## Security
 

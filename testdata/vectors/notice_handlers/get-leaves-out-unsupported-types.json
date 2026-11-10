@@ -1,0 +1,36 @@
+{
+  "description": "A handler for a type the platform no longer supports is left out.",
+  "notice_types": [
+    "LtiHelloWorldNotice",
+    "LtiAssetProcessorSubmissionNotice"
+  ],
+  "redirect_uris": [
+    "https://tool.example.com/launch",
+    "https://Assets.Example.org:8443/lti/launch"
+  ],
+  "scopes": [
+    "https://purl.imsglobal.org/spec/lti/scope/noticehandlers"
+  ],
+  "registered": [
+    {
+      "notice_type": "LtiRetiredNotice",
+      "handler": "https://tool.example.com/old"
+    }
+  ],
+  "method": "GET",
+  "expect_status": 200,
+  "expect_body": {
+    "client_id": "client-1",
+    "deployment_id": "deployment-1",
+    "notice_handlers": [
+      {
+        "notice_type": "LtiHelloWorldNotice",
+        "handler": ""
+      },
+      {
+        "notice_type": "LtiAssetProcessorSubmissionNotice",
+        "handler": ""
+      }
+    ]
+  }
+}
