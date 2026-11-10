@@ -1,5 +1,5 @@
 {
-  "description": "A handler may be on one of the tool's domains, exactly.",
+  "description": "A handler may be on the tool's domain, the registration's domain property, exactly.",
   "notice_types": [
     "LtiContextCopyNotice",
     "LtiAssetProcessorSubmissionNotice"
@@ -9,8 +9,8 @@
     "https://Assets.Example.org:8443/lti/launch"
   ],
   "domains": [
-    "tool.example.com",
-    "hooks.example.net"
+    "hooks.example.net",
+    "secondary.example.net"
   ],
   "scopes": [
     "https://purl.imsglobal.org/spec/lti/scope/noticehandlers"

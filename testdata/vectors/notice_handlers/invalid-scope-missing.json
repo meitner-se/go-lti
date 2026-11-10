@@ -10,7 +10,7 @@
   ],
   "domains": [
     "tool.example.com",
-    "hooks.example.net"
+    "secondary.example.net"
   ],
   "scopes": [
     "https://purl.imsglobal.org/spec/lti-nrps/scope/contextmembership.readonly"

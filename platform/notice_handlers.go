@@ -31,7 +31,7 @@ var (
 // ReadNoticeHandlers returns them.
 type DeploymentNoticeHandlers struct {
 	// Tool is the deployment's tool, whose ClientID must be the client's. A handler must be on the
-	// host of one of its RedirectURIs or one of its Domains (see OnToolHosts).
+	// host of one of its RedirectURIs or on its domain, the first of its Domains (see OnToolHosts).
 	Tool Tool
 	// Handlers are the tool's handler for each notice type it registered one for. A type the
 	// platform no longer supports is left out of the answer; a type without a handler is answered
@@ -168,7 +168,8 @@ func (e *endpoints) failNoticeHandlers(w http.ResponseWriter, r *http.Request, e
 }
 
 // OnToolHosts reports whether rawURL is an https URL whose host is exactly the host of one of the
-// tool's redirect URIs or one of its domains, as a notice handler must be. Subdomains don't count.
+// tool's redirect URIs or its domain, the first of Tool.Domains, as a notice handler must be.
+// Subdomains and the tool's secondary domains don't count.
 func OnToolHosts(tool Tool, rawURL string) bool {
 	u, ok := urlcheck.ParseHTTPS(rawURL)
 	if !ok {
@@ -177,14 +178,16 @@ func OnToolHosts(tool Tool, rawURL string) bool {
 
 	host := urlcheck.NormalizeDomain(u.Hostname())
 
-	hosts := make([]string, 0, len(tool.RedirectURIs)+len(tool.Domains))
+	hosts := make([]string, 0, len(tool.RedirectURIs)+1)
 	for _, redirectURI := range tool.RedirectURIs {
 		if redirect, ok := urlcheck.ParseHTTPS(redirectURI); ok {
 			hosts = append(hosts, redirect.Hostname())
 		}
 	}
 
-	hosts = append(hosts, tool.Domains...)
+	if len(tool.Domains) > 0 {
+		hosts = append(hosts, tool.Domains[0])
+	}
 
 	return slices.ContainsFunc(hosts, func(toolHost string) bool {
 		return toolHost != "" && urlcheck.NormalizeDomain(toolHost) == host

@@ -185,10 +185,16 @@ func TestNewHandler_PutNoticeHandlerOnAToolDomain(t *testing.T) {
 	s := newNoticeHandlersServer()
 	handler := newNoticeHandlersTestHandler(t, s)
 
-	// cdn.example.net is one of the tool's domains, though no redirect URI is on it.
-	w := callAGS(t, handler, http.MethodPut, noticeHandlerURL, "token-1", `{"notice_type": "LtiContextCopyNotice", "handler": "https://cdn.example.net/notices"}`)
+	s.deployments["deployment-1"].Tool.Domains = []string{"hooks.example.net", "cdn.example.net"}
+
+	// hooks.example.net is the tool's domain, though no redirect URI is on it.
+	w := callAGS(t, handler, http.MethodPut, noticeHandlerURL, "token-1", `{"notice_type": "LtiContextCopyNotice", "handler": "https://hooks.example.net/notices"}`)
 	got := requireAGSBody(t, w, http.StatusOK, "application/json")
-	assert.Equal(t, map[string]any{"notice_type": "LtiContextCopyNotice", "handler": "https://cdn.example.net/notices"}, got)
+	assert.Equal(t, map[string]any{"notice_type": "LtiContextCopyNotice", "handler": "https://hooks.example.net/notices"}, got)
+
+	// cdn.example.net is only a secondary domain.
+	w = callAGS(t, handler, http.MethodPut, noticeHandlerURL, "token-1", `{"notice_type": "LtiContextCopyNotice", "handler": "https://cdn.example.net/notices"}`)
+	requireAGSError(t, w, http.StatusBadRequest, lti.ErrorInvalidRequest, errNoticeHandlerURL.Description)
 }
 
 func TestNewHandler_PutNoticeHandlerEmptyRemovesIt(t *testing.T) {
@@ -399,7 +405,7 @@ func TestOnToolHosts(t *testing.T) {
 
 	tool := createTestTool()
 	tool.RedirectURIs = []string{"https://tool.example.com/launch", "https://Assets.Example.org:8443/lti", "not a url"}
-	tool.Domains = []string{"tool.example.com", "CDN.example.net", ""}
+	tool.Domains = []string{"CDN.example.net", "secondary.example.org"}
 
 	for rawURL, want := range map[string]bool{
 		"https://tool.example.com/notices":        true,

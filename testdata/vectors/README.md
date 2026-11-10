@@ -85,15 +85,16 @@ must be an absolute https URL.
 ## `notice_handlers/`
 
 A tool's request to its notice handler registration endpoint, with the platform's supported
-`notice_types`, the tool's `redirect_uris` and `domains`, the `scopes` its access token was granted
-and the handlers already `registered` for client `client-1` and deployment `deployment-1`. `method`
-is `GET` or `PUT`, with the PUT's `body`. `expect_status` is the answer's status: a success has
-`expect_body`, and a refusal has the OAuth 2.0 `error_code` and, for a 400, its `error_description`.
-A GET lists every supported type, in order, with `""` where no handler is registered. A PUT is
-refused for an unsupported type, a handler that isn't an absolute https URL on the tool's own
-domain, and a `max_batch_size` that isn't a positive integer. The tool's own domain is exactly the
-host of one of its redirect URIs or one of its domains: subdomains are other hosts, and port, path
-and case don't matter. An empty handler removes the type's handler.
+`notice_types`, the tool's `redirect_uris` and `domains` (its domain, then its secondary domains),
+the `scopes` its access token was granted and the handlers already `registered` for client
+`client-1` and deployment `deployment-1`. `method` is `GET` or `PUT`, with the PUT's `body`.
+`expect_status` is the answer's status: a success has `expect_body`, and a refusal has the OAuth 2.0
+`error_code` and, for a 400, its `error_description`. A GET lists every supported type, in order,
+with `""` where no handler is registered. A PUT is refused for an unsupported type, a handler that
+isn't an absolute https URL on the tool's own domain, and a `max_batch_size` that isn't a positive
+integer. The tool's own domain is exactly the host of one of its redirect URIs or its domain:
+subdomains are other hosts, secondary domains don't count, and port, path and case don't matter. An
+empty handler removes the type's handler.
 
 ## `notice/`
 
