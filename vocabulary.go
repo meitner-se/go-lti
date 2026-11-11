@@ -17,7 +17,19 @@ const (
 	MessageTypeSubmissionReview    MessageType = "LtiSubmissionReviewRequest"
 	MessageTypeReportReviewRequest MessageType = "LtiReportReviewRequest"
 	MessageTypeEulaRequest         MessageType = "LtiEulaRequest"
+	// MessageTypeAssetProcessorSettingsRequest launches an asset processor's settings for an
+	// activity. LtiReportReviewRequest and LtiEulaRequest are the other two Asset Processor launches.
+	MessageTypeAssetProcessorSettingsRequest MessageType = "LtiAssetProcessorSettingsRequest"
 )
+
+// NoticeTypeAssetProcessorSubmission is the notice the platform sends when a user submits assets
+// to an activity that has an asset processor attached.
+const NoticeTypeAssetProcessorSubmission NoticeType = "LtiAssetProcessorSubmissionNotice"
+
+// PlacementActivityAssetProcessor is the Dynamic Registration placement of a Deep Linking request
+// that attaches an asset processor to an activity: a tool puts it on its LtiDeepLinkingRequest
+// message, and a platform that supports Asset Processor lists it in its OpenID configuration.
+const PlacementActivityAssetProcessor = "ActivityAssetProcessor"
 
 // Role is a role URI from LTI 1.3 Appendix A.2.
 type Role string
@@ -138,6 +150,9 @@ const (
 	ContentItemTypeFile            ContentItemType = "file"
 	ContentItemTypeHTML            ContentItemType = "html"
 	ContentItemTypeImage           ContentItemType = "image"
+	// ContentItemTypeLTIAssetProcessor attaches an asset processor to an activity. A tool may
+	// return it only when the request offered it.
+	ContentItemTypeLTIAssetProcessor ContentItemType = "ltiAssetProcessor"
 )
 
 // ParseDocumentTarget returns the DocumentTarget s names, or an error when it is none of them. It
@@ -167,8 +182,7 @@ func ParseContentItemType(s string) (ContentItemType, error) {
 type Scope string
 
 // Assignment and Grade Services 2.0, Names and Role Provisioning Services 2.0, LTI Platform
-// Notification Service and LTI Dynamic Registration 1.0 scopes. The Asset Processor scopes are with
-// its claims.
+// Notification Service, LTI Dynamic Registration 1.0 and LTI Asset Processor scopes.
 const (
 	ScopeAGSLineItem         Scope = "https://purl.imsglobal.org/spec/lti-ags/scope/lineitem"
 	ScopeAGSLineItemReadOnly Scope = "https://purl.imsglobal.org/spec/lti-ags/scope/lineitem.readonly"
@@ -183,6 +197,14 @@ const (
 	// ScopeRegistration lets a tool read its own Dynamic Registration and submit an update to it
 	// (LTI Dynamic Registration 1.0 §4.2).
 	ScopeRegistration Scope = "https://purl.imsglobal.org/spec/lti-reg/scope/registration"
+	// ScopeAssetReadOnly lets a tool download a submission's assets with the Asset Service.
+	ScopeAssetReadOnly Scope = "https://purl.imsglobal.org/spec/lti/scope/asset.readonly"
+	// ScopeReport lets a tool post reports about assets with the Asset Report Service.
+	ScopeReport Scope = "https://purl.imsglobal.org/spec/lti/scope/report"
+	// ScopeEulaUser lets a tool record a user's acceptance of its EULA, or clear every user's.
+	ScopeEulaUser Scope = "https://purl.imsglobal.org/spec/lti/scope/eula/user"
+	// ScopeEulaDeployment lets a tool say whether the deployment requires its EULA.
+	ScopeEulaDeployment Scope = "https://purl.imsglobal.org/spec/lti/scope/eula/deployment"
 )
 
 // Variable is a substitution variable for custom parameter values (LTI 1.3 Appendix B),

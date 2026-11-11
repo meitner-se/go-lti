@@ -11,7 +11,6 @@ import (
 	"errors"
 	"fmt"
 	"maps"
-	"slices"
 	"strings"
 	"time"
 
@@ -145,29 +144,22 @@ func (l *Launcher) idTokenClaims(tool Tool, nonce string, msg lti.Message, now t
 
 	claims := map[string]any{}
 
-	var (
-		common lti.Common
-		link   *lti.ResourceLink
-	)
+	common, err := messageCommon(msg)
+	if err != nil {
+		return nil, err
+	}
+
+	var link *lti.ResourceLink
 
 	switch m := msg.(type) {
 	case *lti.ResourceLinkRequest:
-		if m == nil {
-			return nil, errors.New("lti: launch needs a message")
-		}
-
 		if m.ResourceLink.ID == "" || len(m.ResourceLink.ID) > maxIdentifierLength {
 			return nil, errors.New("lti: resource link launch needs a resource link id of at most 255 characters")
 		}
 
-		common = m.Common
 		link = &m.ResourceLink
 		claims[lti.ClaimResourceLink] = m.ResourceLink
 	case *lti.DeepLinkingRequest:
-		if m == nil {
-			return nil, errors.New("lti: launch needs a message")
-		}
-
 		settings, err := deepLinkingSettingsClaim(m.Settings, l.config.Endpoints().DeepLinkReturn)
 		if err != nil {
 			return nil, err
@@ -178,55 +170,21 @@ func (l *Launcher) idTokenClaims(tool Tool, nonce string, msg lti.Message, now t
 			return nil, errors.New("lti: deep linking request can't carry an ags lineitem url")
 		}
 
-		// Asset Processor Content Item: a request that offers ltiAssetProcessor names the activity
-		// the processors attach to.
-		if slices.Contains(m.Settings.AcceptTypes, lti.ContentItemTypeLTIAssetProcessor) && m.Activity == nil {
-			return nil, errors.New("lti: deep linking request that offers ltiAssetProcessor needs an activity")
+		if err := deepLinkingActivityClaim(m, claims); err != nil {
+			return nil, err
 		}
 
-		if m.Activity != nil {
-			if err := checkIdentifier("activity id", m.Activity.ID); err != nil {
-				return nil, err
-			}
-
-			claims[lti.ClaimActivity] = *m.Activity
-		}
-
-		common = m.Common
 		claims[lti.ClaimDeepLinkingSettings] = settings
 	case *lti.AssetProcessorSettingsRequest:
-		if m == nil {
-			return nil, errors.New("lti: launch needs a message")
-		}
-
-		if err := assetProcessorSettingsClaims(m, claims); err != nil {
-			return nil, err
-		}
-
-		common = m.Common
+		err = assetProcessorSettingsClaims(m, claims)
 	case *lti.ReportReviewRequest:
-		if m == nil {
-			return nil, errors.New("lti: launch needs a message")
-		}
-
-		if err := reportReviewClaims(m, claims); err != nil {
-			return nil, err
-		}
-
-		common = m.Common
+		err = reportReviewClaims(m, claims)
 	case *lti.EulaRequest:
-		if m == nil {
-			return nil, errors.New("lti: launch needs a message")
-		}
+		err = eulaClaims(m, claims)
+	}
 
-		if err := eulaClaims(m, claims); err != nil {
-			return nil, err
-		}
-
-		common = m.Common
-	default:
-		return nil, errors.New("lti: launch message must be a *ResourceLinkRequest, *DeepLinkingRequest, " +
-			"*AssetProcessorSettingsRequest, *ReportReviewRequest or *EulaRequest")
+	if err != nil {
+		return nil, err
 	}
 
 	targetLinkURI := common.TargetLinkURI
@@ -312,6 +270,44 @@ func (l *Launcher) idTokenClaims(tool Tool, nonce string, msg lti.Message, now t
 	}
 
 	return claims, nil
+}
+
+// messageCommon returns what msg says in common with every launch. A nil message of a known type
+// and a message of another type are errors.
+func messageCommon(msg lti.Message) (lti.Common, error) {
+	var common *lti.Common
+
+	switch m := msg.(type) {
+	case *lti.ResourceLinkRequest:
+		if m != nil {
+			common = &m.Common
+		}
+	case *lti.DeepLinkingRequest:
+		if m != nil {
+			common = &m.Common
+		}
+	case *lti.AssetProcessorSettingsRequest:
+		if m != nil {
+			common = &m.Common
+		}
+	case *lti.ReportReviewRequest:
+		if m != nil {
+			common = &m.Common
+		}
+	case *lti.EulaRequest:
+		if m != nil {
+			common = &m.Common
+		}
+	default:
+		return lti.Common{}, errors.New("lti: launch message must be a *ResourceLinkRequest, *DeepLinkingRequest, " +
+			"*AssetProcessorSettingsRequest, *ReportReviewRequest or *EulaRequest")
+	}
+
+	if common == nil {
+		return lti.Common{}, errors.New("lti: launch needs a message")
+	}
+
+	return *common, nil
 }
 
 // LaunchVariables returns the substitution variables a launch supports, for Config.Variables. Each

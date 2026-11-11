@@ -232,7 +232,10 @@ func (l *Launcher) Respond(ctx context.Context, req *AuthenticationRequest, laun
 // checkMatchesInitiation checks that msg launches what li started: the same deployment and the same
 // target link URI, each defaulting to the tool's as they do in the URL and the claims.
 func checkMatchesInitiation(tool Tool, li LoginInitiation, msg lti.Message) error {
-	common, _ := messageCommon(msg)
+	common, err := messageCommon(msg)
+	if err != nil {
+		return err
+	}
 
 	sentTarget, messageTarget := li.TargetLinkURI, common.TargetLinkURI
 	if sentTarget == "" {

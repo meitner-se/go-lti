@@ -5,50 +5,6 @@ import (
 	"time"
 )
 
-// Claim names of the LTI Asset Processor family: the Asset Processor Content Item and Settings,
-// the Submission Notice, the Asset and Asset Report services, Report Review and the EULA message
-// and service. for_user is the claim LTI Submission Review defines.
-const (
-	ClaimActivity        = "https://purl.imsglobal.org/spec/lti/claim/activity"
-	ClaimForUser         = "https://purl.imsglobal.org/spec/lti/claim/for_user"
-	ClaimSubmission      = "https://purl.imsglobal.org/spec/lti/claim/submission"
-	ClaimAsset           = "https://purl.imsglobal.org/spec/lti/claim/asset"
-	ClaimAssetReportType = "https://purl.imsglobal.org/spec/lti/claim/assetreport_type"
-	ClaimAssetService    = "https://purl.imsglobal.org/spec/lti/claim/assetservice"
-	ClaimAssetReport     = "https://purl.imsglobal.org/spec/lti/claim/assetreport"
-	ClaimEulaService     = "https://purl.imsglobal.org/spec/lti/claim/eulaservice"
-)
-
-// Asset Processor scopes.
-const (
-	// ScopeAssetReadOnly lets a tool download a submission's assets with the Asset Service.
-	ScopeAssetReadOnly Scope = "https://purl.imsglobal.org/spec/lti/scope/asset.readonly"
-	// ScopeReport lets a tool post reports about assets with the Asset Report Service.
-	ScopeReport Scope = "https://purl.imsglobal.org/spec/lti/scope/report"
-	// ScopeEulaUser lets a tool record a user's acceptance of its EULA, or clear every user's.
-	ScopeEulaUser Scope = "https://purl.imsglobal.org/spec/lti/scope/eula/user"
-	// ScopeEulaDeployment lets a tool say whether the deployment requires its EULA.
-	ScopeEulaDeployment Scope = "https://purl.imsglobal.org/spec/lti/scope/eula/deployment"
-)
-
-// MessageTypeAssetProcessorSettingsRequest launches an asset processor's settings for an activity.
-// MessageTypeReportReviewRequest and MessageTypeEulaRequest are the other two Asset Processor
-// launches.
-const MessageTypeAssetProcessorSettingsRequest MessageType = "LtiAssetProcessorSettingsRequest"
-
-// NoticeTypeAssetProcessorSubmission is the notice the platform sends when a user submits assets
-// to an activity that has an asset processor attached.
-const NoticeTypeAssetProcessorSubmission NoticeType = "LtiAssetProcessorSubmissionNotice"
-
-// ContentItemTypeLTIAssetProcessor is the Deep Linking item that attaches an asset processor to an
-// activity. A tool may return it only when the request offered it.
-const ContentItemTypeLTIAssetProcessor ContentItemType = "ltiAssetProcessor"
-
-// PlacementActivityAssetProcessor is the Dynamic Registration placement of a Deep Linking request
-// that attaches an asset processor to an activity: a tool puts it on its LtiDeepLinkingRequest
-// message, and a platform that supports Asset Processor lists it in its OpenID configuration.
-const PlacementActivityAssetProcessor = "ActivityAssetProcessor"
-
 // Activity is the activity claim: the activity, such as an assignment, that an asset processor is
 // attached to. Its ID is fixed from the Deep Linking request on, even while the activity isn't
 // saved yet, and is the same in the settings launch, the submission notices and report reviews.

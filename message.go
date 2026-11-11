@@ -7,7 +7,8 @@ import (
 )
 
 // Claim names from LTI 1.3 §5, LTI Deep Linking 2.0 §4, Names and Role Provisioning Services 2.0
-// §3.6.1.1, Assignment and Grade Services 2.0 §3.1 and the LTI Platform Notification Service.
+// §3.6.1.1, Assignment and Grade Services 2.0 §3.1, the LTI Platform Notification Service and LTI
+// Asset Processor.
 const (
 	ClaimMessageType         = "https://purl.imsglobal.org/spec/lti/claim/message_type"
 	ClaimVersion             = "https://purl.imsglobal.org/spec/lti/claim/version"
@@ -32,6 +33,17 @@ const (
 	ClaimPlatformNotificationService = "https://purl.imsglobal.org/spec/lti/claim/platformnotificationservice"
 	// ClaimNotice is the notice a notice JWT carries.
 	ClaimNotice = "https://purl.imsglobal.org/spec/lti/claim/notice"
+	// The LTI Asset Processor claims: the Content Item and Settings, the Submission Notice, the
+	// Asset and Asset Report services, Report Review and the EULA message and service. for_user is
+	// the claim LTI Submission Review defines.
+	ClaimActivity        = "https://purl.imsglobal.org/spec/lti/claim/activity"
+	ClaimForUser         = "https://purl.imsglobal.org/spec/lti/claim/for_user"
+	ClaimSubmission      = "https://purl.imsglobal.org/spec/lti/claim/submission"
+	ClaimAsset           = "https://purl.imsglobal.org/spec/lti/claim/asset"
+	ClaimAssetReportType = "https://purl.imsglobal.org/spec/lti/claim/assetreport_type"
+	ClaimAssetService    = "https://purl.imsglobal.org/spec/lti/claim/assetservice"
+	ClaimAssetReport     = "https://purl.imsglobal.org/spec/lti/claim/assetreport"
+	ClaimEulaService     = "https://purl.imsglobal.org/spec/lti/claim/eulaservice"
 )
 
 // Message is a message the platform launches a tool with: *ResourceLinkRequest,

@@ -25,6 +25,27 @@ func checkIdentifier(name, id string) error {
 	return nil
 }
 
+// deepLinkingActivityClaim checks a Deep Linking request's activity and adds its claim. A request
+// that offers ltiAssetProcessor names the activity the processors attach to (Asset Processor
+// Content Item).
+func deepLinkingActivityClaim(m *lti.DeepLinkingRequest, claims map[string]any) error {
+	if m.Activity == nil {
+		if slices.Contains(m.Settings.AcceptTypes, lti.ContentItemTypeLTIAssetProcessor) {
+			return errors.New("lti: deep linking request that offers ltiAssetProcessor needs an activity")
+		}
+
+		return nil
+	}
+
+	if err := checkIdentifier("activity id", m.Activity.ID); err != nil {
+		return err
+	}
+
+	claims[lti.ClaimActivity] = *m.Activity
+
+	return nil
+}
+
 // assetProcessorSettingsClaims checks an LtiAssetProcessorSettingsRequest and adds its own claims.
 // The settings are for an activity in a context, so it needs both. The context's service claims are
 // allowed, but there is no resource to carry an AGS line item.
@@ -253,33 +274,4 @@ func checkAssets(assets []lti.Asset) error {
 	}
 
 	return nil
-}
-
-// messageCommon returns what msg says in common with every launch, or false for a nil or unknown
-// message.
-func messageCommon(msg lti.Message) (lti.Common, bool) {
-	switch m := msg.(type) {
-	case *lti.ResourceLinkRequest:
-		if m != nil {
-			return m.Common, true
-		}
-	case *lti.DeepLinkingRequest:
-		if m != nil {
-			return m.Common, true
-		}
-	case *lti.AssetProcessorSettingsRequest:
-		if m != nil {
-			return m.Common, true
-		}
-	case *lti.ReportReviewRequest:
-		if m != nil {
-			return m.Common, true
-		}
-	case *lti.EulaRequest:
-		if m != nil {
-			return m.Common, true
-		}
-	}
-
-	return lti.Common{}, false
 }
