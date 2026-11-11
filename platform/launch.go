@@ -1,5 +1,6 @@
 // Package platform implements the platform side of LTI 1.3: signing the id_token a tool is
-// launched with, verifying Deep Linking responses, Dynamic Registration, the OpenID configuration,
+// launched with, verifying Deep Linking responses, Dynamic Registration and its client
+// configuration endpoint, the OpenID configuration,
 // the Names and Role Provisioning Services memberships endpoint, the Assignment and Grade Services
 // line item, score and result endpoints, and the LTI Platform Notification Service's notice handler
 // endpoint and signed notices.

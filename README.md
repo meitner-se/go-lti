@@ -2,7 +2,7 @@
 
 LTI 1.3 and LTI Advantage for Go, for the platform side: the system that launches tools, such as an LMS.
 
-It covers the launch (the OIDC third-party login flow and the signed id_token), verifying Deep Linking 2.0 responses, Dynamic Registration 1.0, the platform's OpenID configuration and JWKS, Names and Role Provisioning Services 2.0 (the launch claim and the memberships endpoint), Assignment and Grade Services 2.0 (the launch claim and the line item, score and result endpoints) and the LTI Platform Notification Service (the launch claim, the notice handler endpoint and signed notices). LTI 1.1 is not supported.
+It covers the launch (the OIDC third-party login flow and the signed id_token), verifying Deep Linking 2.0 responses, Dynamic Registration 1.0 (registration and the client configuration endpoint), the platform's OpenID configuration and JWKS, Names and Role Provisioning Services 2.0 (the launch claim and the memberships endpoint), Assignment and Grade Services 2.0 (the launch claim and the line item, score and result endpoints) and the LTI Platform Notification Service (the launch claim, the notice handler endpoint and signed notices). LTI 1.1 is not supported.
 
 ```sh
 go get github.com/meitner-se/go-lti
@@ -15,7 +15,7 @@ Work in progress: the API may change until v1.0.0.
 | Package | What it does |
 | -- | -- |
 | `lti` | Types both sides of LTI share: messages and claims, content items, membership containers, line items, scores and results, notice handlers and notices, roles, scopes and other spec vocabulary, signing keys, and `Error`. |
-| `platform` | The platform side: its `Config`, its record of each `Tool`, the launch flow, Deep Linking verification, Dynamic Registration, the OpenID configuration, the Names and Role Provisioning Services endpoint, the Assignment and Grade Services endpoints, and the Platform Notification Service endpoint and notices. |
+| `platform` | The platform side: its `Config`, its record of each `Tool`, the launch flow, Deep Linking verification, Dynamic Registration and its client configuration endpoint, the OpenID configuration, the Names and Role Provisioning Services endpoint, the Assignment and Grade Services endpoints, and the Platform Notification Service endpoint and notices. |
 | `jwks` | Publishes the platform's keys and fetches tools' keys, with caching. |
 | `safehttp` | An HTTP client that won't connect to private or internal addresses, for URLs a tool controls. |
 | `ltitest` | Test keys, a JWKS server and an in-memory nonce store. |
@@ -133,6 +133,32 @@ tool := reg.Tool(clientID)
 ```
 
 The platform's endpoints are the issuer plus `cfg.Paths`, listed by `cfg.Endpoints()`. Only the OpenID configuration's path is set by a spec (`platform.PathOpenIDConfiguration`); you choose the others, and tools learn them from the OpenID configuration, the registration response or a launch. Once a tool has registered it keeps the URLs it was given, so don't change a path after that. The package examples on [pkg.go.dev](https://pkg.go.dev/github.com/meitner-se/go-lti) run as tests.
+
+### Updating a registration
+
+LTI Dynamic Registration 1.0 §4 lets a registered tool read its registration and submit an update to it, at its client configuration endpoint. The tool gets an access token for it from your token endpoint with its client credentials (§4.1), as it does for the other LTI services, so there is no `registration_access_token`: grant `lti.ScopeRegistrationReadOnly` (read) or `lti.ScopeRegistration` (read and update) to tools that registered through Dynamic Registration.
+
+Set `Paths.RegistrationClient` to a prefix, and a tool's endpoint is at the issuer plus the prefix plus `/{client_id}`, built by `cfg.RegistrationClientURL`. `NewHandler` serves it when you set `Paths.RegistrationClient`, `ReadRegistration` and `UpdateRegistration` together, with `AuthorizeService`. Then the registration response carries the tool's `registration_client_uri`, and the OpenID configuration lists both scopes in `scopes_supported`.
+
+```go
+cfg.Paths.RegistrationClient = "/registrations" // https://lms.example.com/lti/registrations/{client_id}
+
+handler, err := platform.NewHandler(cfg, platform.Handlers{
+	Register:         register,
+	AuthorizeService: authorizeService, // as for Names and Role Provisioning Services
+	ReadRegistration: func(r *http.Request, client platform.ServiceClient) (platform.RegistrationResponse, error) {
+		// Read client.ClientID's registration and grant, with any pending update applied.
+		return reg.Response(grant), nil
+		// or platform.ErrRegistrationNotFound (404), or platform.ErrRegistrationForbidden (403)
+	},
+	UpdateRegistration: func(r *http.Request, client platform.ServiceClient, reg *platform.Registration) (platform.RegistrationResponse, error) {
+		// Keep reg as client.ClientID's pending update, for an admin to review with reg.Review(cfg).
+		return reg.Response(grant), nil
+	},
+})
+```
+
+A GET, with either scope, answers the registration in the registration response's shape. A PUT, with `lti.ScopeRegistration` only, is checked as `ParseRegistration` checks a registration and refused with the same 400 errors; a `client_id` other than the tool's own is refused too, since a registration's `client_id` never changes. The spec asks that an update not apply at once (§4), so keep it pending and return the registration reflecting it, as `ReadRegistration` will. go-lti sets the answer's `client_id` and `registration_client_uri`. Another client's endpoint, and an unknown client, get a 404 that doesn't say whether the client exists; `ErrRegistrationForbidden` gets a 403. Every answer has `Cache-Control: no-store`.
 
 ## Names and Role Provisioning Services
 
@@ -309,7 +335,7 @@ A rejection of something a tool or a browser sent is an `*lti.Error` with the sp
 
 ## Test vectors
 
-`testdata/vectors/` holds JSON cases with their expected results, for JWKS documents, Dynamic Registration requests, Deep Linking responses, custom parameter substitution, the Names and Role Provisioning Services, Assignment and Grade Services and Platform Notification Service launch claims, the notice handler endpoint and notice JWTs. go-lti's tests run them, and an implementation in another language can run the same cases. See [testdata/vectors/README.md](testdata/vectors/README.md).
+`testdata/vectors/` holds JSON cases with their expected results, for JWKS documents, Dynamic Registration requests and responses, the client configuration endpoint, Deep Linking responses, custom parameter substitution, the Names and Role Provisioning Services, Assignment and Grade Services and Platform Notification Service launch claims, the notice handler endpoint and notice JWTs. go-lti's tests run them, and an implementation in another language can run the same cases. See [testdata/vectors/README.md](testdata/vectors/README.md).
 
 ## Security
 

@@ -45,7 +45,9 @@ type SupportedMessage struct {
 	Type lti.MessageType `json:"type"`
 }
 
-// OpenIDConfiguration returns the platform's OpenID configuration document. It fails when the
+// OpenIDConfiguration returns the platform's OpenID configuration document. Its scopes_supported
+// are openid and Config.Scopes, plus lti.ScopeRegistrationReadOnly and lti.ScopeRegistration when
+// Paths.RegistrationClient is set. It fails when the
 // config is invalid, or lacks what Dynamic Registration requires: a token endpoint, and the
 // product's family code and version.
 func (c Config) OpenIDConfiguration() (OpenIDConfiguration, error) {
@@ -64,8 +66,10 @@ func (c Config) OpenIDConfiguration() (OpenIDConfiguration, error) {
 
 	endpoints := c.Endpoints()
 
+	// LTI Dynamic Registration 1.0 §4.2: a platform that serves the client configuration endpoint
+	// lists its two scopes.
 	scopes := []string{"openid"}
-	for _, scope := range c.Scopes {
+	for _, scope := range c.scopesSupported() {
 		scopes = append(scopes, string(scope))
 	}
 

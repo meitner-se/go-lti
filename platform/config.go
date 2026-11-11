@@ -42,8 +42,8 @@ type Config struct {
 const PathOpenIDConfiguration = "/.well-known/openid-configuration"
 
 // Paths are where the platform's endpoints are under its issuer, such as "/register". Each starts
-// with "/" and is unique, and each is required except ContextMemberships, ContextLineItems and
-// NoticeHandlers; the first two may share a prefix. Tools learn the URLs from
+// with "/" and is unique, and each is required except ContextMemberships, ContextLineItems,
+// NoticeHandlers and RegistrationClient; the first two may share a prefix. Tools learn the URLs from
 // the OpenID configuration, a Dynamic Registration or a launch, and keep them once registered, so
 // a path must not change after tools have registered.
 type Paths struct {
@@ -65,6 +65,12 @@ type Paths struct {
 	// such as "/notice-handlers": a deployment's notice handlers are at the prefix plus
 	// "/{deployment}" (see Config.NoticeHandlersURL). Empty when the platform offers none.
 	NoticeHandlers string
+	// RegistrationClient is the prefix of each Dynamic Registration's client configuration
+	// endpoint (LTI Dynamic Registration 1.0 §4), such as "/registrations": a tool reads and
+	// updates its registration at the prefix plus "/{client_id}" (see Config.RegistrationClientURL),
+	// the registration_client_uri of its registration response. Empty when the platform offers
+	// none.
+	RegistrationClient string
 }
 
 // Endpoints are the platform's absolute https URLs.
@@ -165,6 +171,40 @@ func (c Config) NoticeHandlersURL(deploymentID string) (string, error) {
 	return strings.TrimSuffix(c.Issuer, "/") + c.Paths.NoticeHandlers + "/" + url.PathEscape(deploymentID), nil
 }
 
+// RegistrationClientURL returns where the tool with clientID reads and updates its Dynamic
+// Registration, the registration_client_uri of its registration response (LTI Dynamic
+// Registration 1.0 §2.3, §4): the issuer plus Paths.RegistrationClient plus "/{client_id}", with
+// clientID path-escaped. NewHandler serves it. It fails without Paths.RegistrationClient, and for a
+// clientID that is empty, "." or "..".
+func (c Config) RegistrationClientURL(clientID string) (string, error) {
+	if c.Paths.RegistrationClient == "" {
+		return "", errors.New("lti: config has no registration client path")
+	}
+
+	if !isPathSegment(clientID) {
+		return "", errors.New(`lti: a registration client url needs a client id other than "", "." or ".."`)
+	}
+
+	return strings.TrimSuffix(c.Issuer, "/") + c.Paths.RegistrationClient + "/" + url.PathEscape(clientID), nil
+}
+
+// scopesSupported returns the service scopes the platform offers: Scopes, plus
+// lti.ScopeRegistrationReadOnly and lti.ScopeRegistration when it serves the client configuration
+// endpoint, each once.
+func (c Config) scopesSupported() []lti.Scope {
+	scopes := slices.Clone(c.Scopes)
+
+	if c.Paths.RegistrationClient != "" {
+		for _, scope := range []lti.Scope{lti.ScopeRegistrationReadOnly, lti.ScopeRegistration} {
+			if !slices.Contains(scopes, scope) {
+				scopes = append(scopes, scope)
+			}
+		}
+	}
+
+	return scopes
+}
+
 // PlatformNotificationService returns the Platform Notification Service claim for a launch in the
 // deployment with deploymentID, the PlatformNotificationService of its lti.Common: the
 // deployment's NoticeHandlersURL and the platform's NoticeTypes. It fails as NoticeHandlersURL does.
@@ -219,9 +259,9 @@ func (c Config) Validate() error {
 
 // validate checks that each path starts with "/", is clean (no trailing slash, no "." or ".."
 // segments), has no query, fragment, braces or spaces, and differs from the others and from
-// PathOpenIDConfiguration. An empty ContextMemberships, ContextLineItems or NoticeHandlers is left
-// out. ContextMemberships and ContextLineItems may be the same, but no two of the three prefixes
-// may be one under the other, whose routes would overlap.
+// PathOpenIDConfiguration. An empty ContextMemberships, ContextLineItems, NoticeHandlers or
+// RegistrationClient is left out. ContextMemberships and ContextLineItems may be the same, but no
+// two of the four prefixes may be one under the other, whose routes would overlap.
 func (p Paths) validate() error {
 	seen := map[string]string{PathOpenIDConfiguration: "the openid configuration"}
 
@@ -236,6 +276,7 @@ func (p Paths) validate() error {
 		{"context memberships", p.ContextMemberships, true},
 		{"context line items", p.ContextLineItems, true},
 		{"notice handlers", p.NoticeHandlers, true},
+		{"registration client", p.RegistrationClient, true},
 	} {
 		if named.optional && named.path == "" {
 			continue
@@ -265,6 +306,12 @@ func (p Paths) validate() error {
 	for _, prefix := range []string{p.ContextMemberships, p.ContextLineItems} {
 		if n := p.NoticeHandlers; n != "" && prefix != "" && (strings.HasPrefix(n, prefix+"/") || strings.HasPrefix(prefix, n+"/")) {
 			return errors.New("lti: config notice handlers path must not be under a context path, nor a context path under it")
+		}
+	}
+
+	for _, prefix := range []string{p.ContextMemberships, p.ContextLineItems, p.NoticeHandlers} {
+		if c := p.RegistrationClient; c != "" && prefix != "" && (strings.HasPrefix(c, prefix+"/") || strings.HasPrefix(prefix, c+"/")) {
+			return errors.New("lti: config registration client path must not be under another service's path, nor another service's path under it")
 		}
 	}
 

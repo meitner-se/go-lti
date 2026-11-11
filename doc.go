@@ -12,7 +12,8 @@
 // what the platform posts to a handler; Common.PlatformNotificationService sends a tool the claim.
 //
 // The platform side (its configuration, its record of each tool, launches, Deep Linking
-// verification, Dynamic Registration, the OpenID configuration, the Names and Role Provisioning
+// verification, Dynamic Registration and its client configuration endpoint, the OpenID
+// configuration, the Names and Role Provisioning
 // Services endpoint, the Assignment and Grade Services endpoints, and the Platform Notification
 // Service endpoint and notices) lives in package platform.
 // Package jwks publishes and fetches keys, safehttp fetches tool-controlled URLs safely, and

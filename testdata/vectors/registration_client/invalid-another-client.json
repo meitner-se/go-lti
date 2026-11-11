@@ -1,0 +1,48 @@
+{
+  "description": "Another client's configuration endpoint is answered as unknown, whether that client exists or not.",
+  "scopes": [
+    "https://purl.imsglobal.org/spec/lti-reg/scope/registration"
+  ],
+  "registered": {
+    "response_types": [
+      "id_token"
+    ],
+    "grant_types": [
+      "implicit",
+      "client_credentials"
+    ],
+    "initiate_login_uri": "https://client.example.org/lti",
+    "redirect_uris": [
+      "https://client.example.org/callback"
+    ],
+    "client_name": "Virtual Garden",
+    "jwks_uri": "https://client.example.org/.well-known/jwks.json",
+    "token_endpoint_auth_method": "private_key_jwt",
+    "scope": "https://purl.imsglobal.org/spec/lti-ags/scope/score https://purl.imsglobal.org/spec/lti-reg/scope/registration",
+    "https://purl.imsglobal.org/spec/lti-tool-configuration": {
+      "domain": "client.example.org",
+      "target_link_uri": "https://client.example.org/lti",
+      "claims": [
+        "iss",
+        "sub",
+        "email"
+      ]
+    }
+  },
+  "grant": {
+    "deployment_id": "deployment-1",
+    "scopes": [
+      "https://purl.imsglobal.org/spec/lti-ags/scope/score",
+      "https://purl.imsglobal.org/spec/lti-reg/scope/registration"
+    ],
+    "claims": [
+      "iss",
+      "sub"
+    ]
+  },
+  "method": "GET",
+  "path_client_id": "client-2",
+  "expect_status": 404,
+  "error_code": "invalid_request",
+  "error_description": "the client is unknown"
+}
