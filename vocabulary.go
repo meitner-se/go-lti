@@ -8,8 +8,8 @@ import (
 // MessageType is an LTI message type.
 type MessageType string
 
-// Message types. The platform side of this package sends and accepts the first three; the others
-// are named so a registration review can recognise them.
+// Message types. The platform side of this package sends all of them but LtiSubmissionReviewRequest,
+// which is named so a registration review can recognise it, and accepts LtiDeepLinkingResponse.
 const (
 	MessageTypeResourceLinkRequest MessageType = "LtiResourceLinkRequest"
 	MessageTypeDeepLinkingRequest  MessageType = "LtiDeepLinkingRequest"
@@ -152,10 +152,11 @@ func ParseDocumentTarget(s string) (DocumentTarget, error) {
 }
 
 // ParseContentItemType returns the ContentItemType s names, or an error when it is none of the
-// types Deep Linking 2.0 §3 defines.
+// types Deep Linking 2.0 §3 defines or ltiAssetProcessor.
 func ParseContentItemType(s string) (ContentItemType, error) {
 	switch itemType := ContentItemType(s); itemType {
-	case ContentItemTypeLTIResourceLink, ContentItemTypeLink, ContentItemTypeFile, ContentItemTypeHTML, ContentItemTypeImage:
+	case ContentItemTypeLTIResourceLink, ContentItemTypeLink, ContentItemTypeFile, ContentItemTypeHTML, ContentItemTypeImage,
+		ContentItemTypeLTIAssetProcessor:
 		return itemType, nil
 	default:
 		return "", fmt.Errorf("lti: unknown content item type %q", s)
@@ -166,7 +167,8 @@ func ParseContentItemType(s string) (ContentItemType, error) {
 type Scope string
 
 // Assignment and Grade Services 2.0, Names and Role Provisioning Services 2.0, LTI Platform
-// Notification Service and LTI Dynamic Registration 1.0 scopes.
+// Notification Service and LTI Dynamic Registration 1.0 scopes. The Asset Processor scopes are with
+// its claims.
 const (
 	ScopeAGSLineItem         Scope = "https://purl.imsglobal.org/spec/lti-ags/scope/lineitem"
 	ScopeAGSLineItemReadOnly Scope = "https://purl.imsglobal.org/spec/lti-ags/scope/lineitem.readonly"

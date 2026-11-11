@@ -1,0 +1,24 @@
+{
+  "description": "A report review needs the owner's user_id.",
+  "message_type": "LtiReportReviewRequest",
+  "message": {
+    "context": {
+      "id": "course-1",
+      "title": "Biology 1"
+    },
+    "roles": [
+      "http://purl.imsglobal.org/vocab/lis/v2/membership#Instructor"
+    ],
+    "activity": {
+      "id": "activity-1"
+    },
+    "submission": {
+      "id": "submission-1"
+    },
+    "asset": {
+      "id": "asset-1"
+    },
+    "assetreport_type": "originality"
+  },
+  "valid": false
+}

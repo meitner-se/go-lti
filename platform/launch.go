@@ -2,8 +2,8 @@
 // launched with, verifying Deep Linking responses, Dynamic Registration and its client
 // configuration endpoint, the OpenID configuration,
 // the Names and Role Provisioning Services memberships endpoint, the Assignment and Grade Services
-// line item, score and result endpoints, and the LTI Platform Notification Service's notice handler
-// endpoint and signed notices.
+// line item, score and result endpoints, the LTI Platform Notification Service's notice handler
+// endpoint and signed notices, and the LTI Asset Processor launches and submission notice.
 package platform
 
 import (
@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"slices"
 	"strings"
 	"time"
 
@@ -34,6 +35,13 @@ var reservedClaims = map[string]bool{
 	lti.ClaimResourceLink: true, lti.ClaimLaunchPresentation: true, lti.ClaimToolPlatform: true,
 	lti.ClaimCustom: true, lti.ClaimDeepLinkingSettings: true, lti.ClaimNamesRoleService: true,
 	lti.ClaimAGSEndpoint: true, lti.ClaimPlatformNotificationService: true, lti.ClaimNotice: true,
+}
+
+// launchClaims are the Asset Processor claims a launch message sets, which an extension can't set
+// either. A notice's Claims may carry them, since AssetProcessorSubmission builds them that way.
+var launchClaims = map[string]bool{
+	lti.ClaimActivity: true, lti.ClaimForUser: true, lti.ClaimSubmission: true, lti.ClaimAsset: true,
+	lti.ClaimAssetReportType: true, lti.ClaimEulaService: true,
 }
 
 // namesRoleServiceVersion is the Names and Role Provisioning Services version a launch offers.
@@ -170,10 +178,55 @@ func (l *Launcher) idTokenClaims(tool Tool, nonce string, msg lti.Message, now t
 			return nil, errors.New("lti: deep linking request can't carry an ags lineitem url")
 		}
 
+		// Asset Processor Content Item: a request that offers ltiAssetProcessor names the activity
+		// the processors attach to.
+		if slices.Contains(m.Settings.AcceptTypes, lti.ContentItemTypeLTIAssetProcessor) && m.Activity == nil {
+			return nil, errors.New("lti: deep linking request that offers ltiAssetProcessor needs an activity")
+		}
+
+		if m.Activity != nil {
+			if err := checkIdentifier("activity id", m.Activity.ID); err != nil {
+				return nil, err
+			}
+
+			claims[lti.ClaimActivity] = *m.Activity
+		}
+
 		common = m.Common
 		claims[lti.ClaimDeepLinkingSettings] = settings
+	case *lti.AssetProcessorSettingsRequest:
+		if m == nil {
+			return nil, errors.New("lti: launch needs a message")
+		}
+
+		if err := assetProcessorSettingsClaims(m, claims); err != nil {
+			return nil, err
+		}
+
+		common = m.Common
+	case *lti.ReportReviewRequest:
+		if m == nil {
+			return nil, errors.New("lti: launch needs a message")
+		}
+
+		if err := reportReviewClaims(m, claims); err != nil {
+			return nil, err
+		}
+
+		common = m.Common
+	case *lti.EulaRequest:
+		if m == nil {
+			return nil, errors.New("lti: launch needs a message")
+		}
+
+		if err := eulaClaims(m, claims); err != nil {
+			return nil, err
+		}
+
+		common = m.Common
 	default:
-		return nil, errors.New("lti: launch message must be a *ResourceLinkRequest or a *DeepLinkingRequest")
+		return nil, errors.New("lti: launch message must be a *ResourceLinkRequest, *DeepLinkingRequest, " +
+			"*AssetProcessorSettingsRequest, *ReportReviewRequest or *EulaRequest")
 	}
 
 	targetLinkURI := common.TargetLinkURI
@@ -247,7 +300,7 @@ func (l *Launcher) idTokenClaims(tool Tool, nonce string, msg lti.Message, now t
 		}
 
 		name := extension.ClaimName()
-		if !strings.Contains(name, "://") || reservedClaims[name] {
+		if !strings.Contains(name, "://") || reservedClaims[name] || launchClaims[name] {
 			return nil, fmt.Errorf("lti: extension claim %q must be a fully qualified url that the package doesn't set", name)
 		}
 

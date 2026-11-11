@@ -34,8 +34,9 @@ const (
 	ClaimNotice = "https://purl.imsglobal.org/spec/lti/claim/notice"
 )
 
-// Message is a message the platform launches a tool with: *ResourceLinkRequest or
-// *DeepLinkingRequest. Other packages can't implement it.
+// Message is a message the platform launches a tool with: *ResourceLinkRequest,
+// *DeepLinkingRequest, *AssetProcessorSettingsRequest, *ReportReviewRequest or *EulaRequest. Other
+// packages can't implement it.
 type Message interface {
 	MessageType() MessageType
 	isMessage()
@@ -58,6 +59,11 @@ type DeepLinkingRequest struct {
 	Common
 
 	Settings DeepLinkingSettings
+	// Activity is the activity the tool attaches asset processors to. A request that offers
+	// ltiAssetProcessor in Settings.AcceptTypes needs it, and should also carry
+	// PlatformNotificationService, since the tool registers its submission notice handler before it
+	// returns the item.
+	Activity *Activity
 }
 
 // MessageType returns LtiDeepLinkingRequest.
@@ -205,8 +211,10 @@ type DeepLinkingResponse struct {
 	ErrorLog     string
 }
 
-// ContentItem is one item in a Deep Linking response (LTI Deep Linking 2.0 §3).
-// Fields that don't apply to the item's type are empty.
+// ContentItem is one item in a Deep Linking response (LTI Deep Linking 2.0 §3, and the Asset
+// Processor Content Item for ltiAssetProcessor). Fields that don't apply to the item's type are
+// empty. An ltiAssetProcessor's URL is its settings launch's target link URI, empty for the tool's,
+// and its Custom, which it always has, goes with its settings launches and submission notices.
 type ContentItem struct {
 	Type      ContentItemType   `json:"type"`
 	Title     string            `json:"title,omitempty"`
@@ -225,6 +233,9 @@ type ContentItem struct {
 	Embed *Embed `json:"embed,omitempty"`
 	// LineItem is the line item an ltiResourceLink asks the platform to create, as the tool sent it.
 	LineItem json.RawMessage `json:"lineItem,omitempty"`
+	// Report is an ltiAssetProcessor's report member. Present, even empty, it says the tool means to
+	// post reports; nil, the platform may leave the assetreport claim out of its notices.
+	Report *ContentItemReport `json:"report,omitempty"`
 	// Raw is the whole item as the tool sent it, for properties this struct doesn't model. Nothing in
 	// it beyond the fields above was checked: never take URLs or markup from it.
 	Raw json.RawMessage `json:"-"`

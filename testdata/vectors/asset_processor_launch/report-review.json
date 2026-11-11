@@ -1,0 +1,68 @@
+{
+  "description": "A report review carries the activity, the asset's owner, the submission, the asset and the report type, with its context and no resource link. Sharing allows the owner's name and email address.",
+  "message_type": "LtiReportReviewRequest",
+  "message": {
+    "context": {
+      "id": "course-1",
+      "title": "Biology 1"
+    },
+    "roles": [
+      "http://purl.imsglobal.org/vocab/lis/v2/membership#Instructor"
+    ],
+    "sharing": {
+      "name": true,
+      "email": true
+    },
+    "activity": {
+      "id": "activity-1"
+    },
+    "for_user": {
+      "user_id": "7b1c2d3e-4f5a-6b7c-8d9e-0f1a2b3c4d5e",
+      "given_name": "Grace",
+      "family_name": "Hopper",
+      "name": "Grace Hopper",
+      "email": "grace@example.com",
+      "roles": [
+        "http://purl.imsglobal.org/vocab/lis/v2/membership#Learner"
+      ]
+    },
+    "submission": {
+      "id": "submission-1"
+    },
+    "asset": {
+      "id": "asset-1"
+    },
+    "assetreport_type": "originality"
+  },
+  "valid": true,
+  "expect_claims": {
+    "https://purl.imsglobal.org/spec/lti/claim/message_type": "LtiReportReviewRequest",
+    "https://purl.imsglobal.org/spec/lti/claim/activity": {
+      "id": "activity-1"
+    },
+    "https://purl.imsglobal.org/spec/lti/claim/for_user": {
+      "user_id": "7b1c2d3e-4f5a-6b7c-8d9e-0f1a2b3c4d5e",
+      "given_name": "Grace",
+      "family_name": "Hopper",
+      "name": "Grace Hopper",
+      "email": "grace@example.com",
+      "roles": [
+        "http://purl.imsglobal.org/vocab/lis/v2/membership#Learner"
+      ]
+    },
+    "https://purl.imsglobal.org/spec/lti/claim/submission": {
+      "id": "submission-1"
+    },
+    "https://purl.imsglobal.org/spec/lti/claim/asset": {
+      "id": "asset-1"
+    },
+    "https://purl.imsglobal.org/spec/lti/claim/assetreport_type": "originality",
+    "https://purl.imsglobal.org/spec/lti/claim/context": {
+      "id": "course-1",
+      "title": "Biology 1"
+    }
+  },
+  "expect_absent": [
+    "https://purl.imsglobal.org/spec/lti/claim/resource_link"
+  ]
+}

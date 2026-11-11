@@ -242,13 +242,14 @@ func TestParseContentItemType(t *testing.T) {
 
 	for _, want := range []lti.ContentItemType{
 		lti.ContentItemTypeLTIResourceLink, lti.ContentItemTypeLink, lti.ContentItemTypeFile, lti.ContentItemTypeHTML, lti.ContentItemTypeImage,
+		lti.ContentItemTypeLTIAssetProcessor,
 	} {
 		got, err := lti.ParseContentItemType(string(want))
 		require.NoError(t, err)
 		assert.Equal(t, want, got)
 	}
 
-	for _, value := range []string{"", "LtiResourceLink", "link ", "video"} {
+	for _, value := range []string{"", "LtiResourceLink", "link ", "video", "LtiAssetProcessor"} {
 		_, err := lti.ParseContentItemType(value)
 		require.Error(t, err, value)
 	}

@@ -1,0 +1,38 @@
+{
+  "description": "A EULA launch shown in a context may carry the context and the user's roles in it.",
+  "message_type": "LtiEulaRequest",
+  "message": {
+    "context": {
+      "id": "course-1",
+      "title": "Biology 1"
+    },
+    "roles": [
+      "http://purl.imsglobal.org/vocab/lis/v2/membership#Learner"
+    ],
+    "eulaservice": {
+      "url": "https://platform.example.com/lti/eula/deployment-1",
+      "scope": [
+        "https://purl.imsglobal.org/spec/lti/scope/eula/user"
+      ]
+    }
+  },
+  "valid": true,
+  "expect_claims": {
+    "https://purl.imsglobal.org/spec/lti/claim/eulaservice": {
+      "url": "https://platform.example.com/lti/eula/deployment-1",
+      "scope": [
+        "https://purl.imsglobal.org/spec/lti/scope/eula/user"
+      ]
+    },
+    "https://purl.imsglobal.org/spec/lti/claim/context": {
+      "id": "course-1",
+      "title": "Biology 1"
+    },
+    "https://purl.imsglobal.org/spec/lti/claim/roles": [
+      "http://purl.imsglobal.org/vocab/lis/v2/membership#Learner"
+    ]
+  },
+  "expect_absent": [
+    "https://purl.imsglobal.org/spec/lti/claim/resource_link"
+  ]
+}

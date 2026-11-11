@@ -1,0 +1,17 @@
+{
+  "description": "A settings launch needs the activity's id.",
+  "message_type": "LtiAssetProcessorSettingsRequest",
+  "message": {
+    "context": {
+      "id": "course-1",
+      "title": "Biology 1"
+    },
+    "roles": [
+      "http://purl.imsglobal.org/vocab/lis/v2/membership#Instructor"
+    ],
+    "activity": {
+      "id": ""
+    }
+  },
+  "valid": false
+}

@@ -1,0 +1,21 @@
+{
+  "description": "The EULA service URL must be an absolute https URL.",
+  "message_type": "LtiEulaRequest",
+  "message": {
+    "context": {
+      "id": "course-1",
+      "title": "Biology 1"
+    },
+    "roles": [
+      "http://purl.imsglobal.org/vocab/lis/v2/membership#Learner"
+    ],
+    "eulaservice": {
+      "url": "http://platform.example.com/lti/eula/deployment-1",
+      "scope": [
+        "https://purl.imsglobal.org/spec/lti/scope/eula/user",
+        "https://purl.imsglobal.org/spec/lti/scope/eula/deployment"
+      ]
+    }
+  },
+  "valid": false
+}

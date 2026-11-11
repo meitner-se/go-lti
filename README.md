@@ -2,7 +2,7 @@
 
 LTI 1.3 and LTI Advantage for Go, for the platform side: the system that launches tools, such as an LMS.
 
-It covers the launch (the OIDC third-party login flow and the signed id_token), verifying Deep Linking 2.0 responses, Dynamic Registration 1.0 (registration and the client configuration endpoint), the platform's OpenID configuration and JWKS, Names and Role Provisioning Services 2.0 (the launch claim and the memberships endpoint), Assignment and Grade Services 2.0 (the launch claim and the line item, score and result endpoints) and the LTI Platform Notification Service (the launch claim, the notice handler endpoint and signed notices). LTI 1.1 is not supported.
+It covers the launch (the OIDC third-party login flow and the signed id_token), verifying Deep Linking 2.0 responses, Dynamic Registration 1.0 (registration and the client configuration endpoint), the platform's OpenID configuration and JWKS, Names and Role Provisioning Services 2.0 (the launch claim and the memberships endpoint), Assignment and Grade Services 2.0 (the launch claim and the line item, score and result endpoints), the LTI Platform Notification Service (the launch claim, the notice handler endpoint and signed notices) and the messages and claims of LTI Asset Processor (its content item, its settings, report review and EULA launches, and its submission notice). LTI 1.1 is not supported.
 
 ```sh
 go get github.com/meitner-se/go-lti
@@ -14,8 +14,8 @@ Work in progress: the API may change until v1.0.0.
 
 | Package | What it does |
 | -- | -- |
-| `lti` | Types both sides of LTI share: messages and claims, content items, membership containers, line items, scores and results, notice handlers and notices, roles, scopes and other spec vocabulary, signing keys, and `Error`. |
-| `platform` | The platform side: its `Config`, its record of each `Tool`, the launch flow, Deep Linking verification, Dynamic Registration and its client configuration endpoint, the OpenID configuration, the Names and Role Provisioning Services endpoint, the Assignment and Grade Services endpoints, and the Platform Notification Service endpoint and notices. |
+| `lti` | Types both sides of LTI share: messages and claims, content items, membership containers, line items, scores and results, notice handlers and notices, the Asset Processor claims, roles, scopes and other spec vocabulary, signing keys, and `Error`. |
+| `platform` | The platform side: its `Config`, its record of each `Tool`, the launch flow, Deep Linking verification, Dynamic Registration and its client configuration endpoint, the OpenID configuration, the Names and Role Provisioning Services endpoint, the Assignment and Grade Services endpoints, the Platform Notification Service endpoint and notices, and the Asset Processor submission notice. |
 | `jwks` | Publishes the platform's keys and fetches tools' keys, with caching. |
 | `safehttp` | An HTTP client that won't connect to private or internal addresses, for URLs a tool controls. |
 | `ltitest` | Test keys, a JWKS server and an in-memory nonce store. |
@@ -329,13 +329,57 @@ err = platform.PostNotices(ctx, nil, handlerURL, lti.NewNoticeEnvelope(jwt)) // 
 
 A notice JWT carries `iss`, `aud`, `iat`, `exp` (`platform.NoticeTTL` after `iat`), `nonce`, the LTI version, `deployment_id`, the `notice` claim (`id`, `timestamp` with its time zone, `type`) and `tool_platform`, plus `sub`, `roles`, `context`, the Names and Role Provisioning Services and Assignment and Grade Services claims, and `custom` when the notice has them. An envelope holds notices of one type only, and no more of them than the tool's `max_batch_size`. A 2xx answer is a delivery; any other status is a `*platform.NoticeDeliveryError` with its `StatusCode`. Delivery is at least once: to send again, call `SignNotice` again with the same notice, which signs a new JWT with a new `iat`, `exp` and `nonce`.
 
+## Asset Processor
+
+LTI Asset Processor lets a tool, such as an originality checker, process the files students submit to an activity and report on each. A teacher attaches a processor to the activity with Deep Linking, opens its settings with a settings launch, students may first accept the tool's EULA with a EULA launch, each submission sends the tool a notice, and a report review launch shows a report. go-lti builds these messages and checks what the tool returns; the Asset, Asset Report and EULA services the tool calls back are not part of it yet.
+
+Set `cfg.AssetProcessor`, and the OpenID configuration lists the `ActivityAssetProcessor` placement on `LtiDeepLinkingRequest` and the `LtiAssetProcessorSettingsRequest`, `LtiReportReviewRequest` and `LtiEulaRequest` messages. Add the scopes you offer (`lti.ScopeAssetReadOnly`, `lti.ScopeReport`, `lti.ScopeEulaUser`, `lti.ScopeEulaDeployment`) to `cfg.Scopes`, and `lti.NoticeTypeAssetProcessorSubmission` to `cfg.NoticeTypes`. A tool asks for Deep Linking from an activity with the `ActivityAssetProcessor` placement on its `LtiDeepLinkingRequest` message; `RegistrationReview.AssetProcessorDeepLinkingURL` is where that request goes, and `EulaURL` where its EULA launch goes.
+
+**Attaching a processor.** Offer `lti.ContentItemTypeLTIAssetProcessor` in the Deep Linking request's `AcceptTypes` and set its `Activity`, the activity's id, fixed even before the activity is saved; a request that offers the type without it is refused. Set `PlatformNotificationService` too, since the tool registers its submission notice handler before it answers. `Verify` refuses an `ltiAssetProcessor` the request didn't offer, one without `custom`, and a `custom` or `report.custom` value that is `null`. Each item is a processor: keep its `URL` (the settings launch's target, empty for the tool's), `Custom`, sent with its settings launches and notices, and `Report`, whose `URL` and `Custom` go with its report reviews. A nil `Report` means the tool posts no reports.
+
+```go
+msg := &lti.DeepLinkingRequest{
+	Common:   common, // with PlatformNotificationService
+	Settings: lti.DeepLinkingSettings{AcceptTypes: []lti.ContentItemType{lti.ContentItemTypeLTIAssetProcessor}, AcceptMultiple: true},
+	Activity: &lti.Activity{ID: activityID},
+}
+```
+
+**Launches.** Each is an `lti.Message` for `Launcher.Respond`, like a resource link launch, with no resource link:
+
+- `lti.AssetProcessorSettingsRequest` needs a `Context` and the `Activity`, and may carry the context's service claims and the processor's `Custom`.
+- `lti.ReportReviewRequest` needs a `Context`, the `Activity`, `ForUser` (the asset's owner), the `Submission`, the `Asset` and the `AssetReportType`. The owner's name and email address are sent only when `Sharing` allows them.
+- `lti.EulaRequest` needs the deployment's `EulaService` (an https URL and one or both EULA scopes). It may have a `Context`; without one it can't carry context roles. It never carries the context's services.
+
+**The submission notice.** When a user submits files to an activity with a processor attached, build the notice with `platform.AssetProcessorSubmission` and sign it as any other notice, once for each processor whose tool registered a handler for the type:
+
+```go
+notice, err := platform.AssetProcessorSubmission{
+	DeploymentID: deploymentID,
+	ID:           noticeID,
+	Timestamp:    submittedAt,
+	Context:      lti.LaunchContext{ID: courseID},
+	ForUser:      lti.ForUser{UserID: ownerSub, Roles: ownerRoles},
+	Activity:     lti.Activity{ID: activityID},
+	Submission:   lti.AssetSubmission{ID: submissionID}, // new on every resubmission
+	AssetService: lti.AssetService{Assets: assets},      // all the owner's current assets
+	AssetReport:  &lti.AssetReport{ReportURL: reportURL}, // one per processor and activity
+	Custom:       processor.Custom,
+	// Subject and Roles when someone submitted for the owner.
+}.Notice()
+
+jwt, err := launcher.SignNotice(ctx, tool, notice)
+```
+
+`Notice` refuses a submission without a context, an owner, an activity or a submission id, a `Subject` without `Roles`, and an asset without an id, an https URL, a base64-encoded SHA-256 checksum, a timestamp, a size or a content type. The `assetservice` and `assetreport` claims carry their only scope.
+
 ## Errors
 
 A rejection of something a tool or a browser sent is an `*lti.Error` with the spec's error code (such as `invalid_request` or `invalid_redirect_uri`) and a description that is safe to send back. Any other error is your platform's own, such as a signer or network failure.
 
 ## Test vectors
 
-`testdata/vectors/` holds JSON cases with their expected results, for JWKS documents, Dynamic Registration requests and responses, the client configuration endpoint, Deep Linking responses, custom parameter substitution, the Names and Role Provisioning Services, Assignment and Grade Services and Platform Notification Service launch claims, the notice handler endpoint and notice JWTs. go-lti's tests run them, and an implementation in another language can run the same cases. See [testdata/vectors/README.md](testdata/vectors/README.md).
+`testdata/vectors/` holds JSON cases with their expected results, for JWKS documents, Dynamic Registration requests and responses, the client configuration endpoint, Deep Linking responses, custom parameter substitution, the Names and Role Provisioning Services, Assignment and Grade Services and Platform Notification Service launch claims, the notice handler endpoint, notice JWTs, and the Asset Processor launches and submission notice. go-lti's tests run them, and an implementation in another language can run the same cases. See [testdata/vectors/README.md](testdata/vectors/README.md).
 
 ## Security
 

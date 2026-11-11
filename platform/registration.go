@@ -337,6 +337,14 @@ type RegistrationReview struct {
 	// message's target_link_uri, or the tool's when that message has none. Empty when the tool has
 	// no Deep Linking message.
 	DeepLinkingURL string
+	// AssetProcessorDeepLinkingURL is where a Deep Linking request that attaches an asset processor
+	// goes: the first LtiDeepLinkingRequest message with the ActivityAssetProcessor placement's
+	// target_link_uri, or the tool's when that message has none. Empty when the tool has no such
+	// message, so it doesn't offer asset processors.
+	AssetProcessorDeepLinkingURL string
+	// EulaURL is where an LtiEulaRequest goes: the first such message's target_link_uri, or the
+	// tool's when that message has none. Empty when the tool has no LtiEulaRequest message.
+	EulaURL string
 	// RequestedClaims are the claims the tool asks to receive.
 	RequestedClaims []string
 	// RequestsName and RequestsEmail say whether the tool asks for the user's name or email address,
@@ -364,8 +372,16 @@ type ReviewMessage struct {
 	Type          lti.MessageType
 	Label         string
 	TargetLinkURI string
+	// Placements are where the tool wants the message, such as ActivityAssetProcessor.
+	Placements []string
 	// Supported is false for message types this package never sends.
 	Supported bool
+}
+
+// sentMessageTypes are the message types a Launcher sends.
+var sentMessageTypes = []lti.MessageType{
+	lti.MessageTypeResourceLinkRequest, lti.MessageTypeDeepLinkingRequest,
+	lti.MessageTypeAssetProcessorSettingsRequest, lti.MessageTypeReportReviewRequest, lti.MessageTypeEulaRequest,
 }
 
 // Review summarises the registration for the admin who decides whether to activate the tool on
@@ -382,13 +398,15 @@ func (r *Registration) Review(cfg Config) RegistrationReview {
 			Type:          message.Type,
 			Label:         message.Label,
 			TargetLinkURI: message.TargetLinkURI,
-			Supported:     message.Type == lti.MessageTypeResourceLinkRequest || message.Type == lti.MessageTypeDeepLinkingRequest,
+			Placements:    message.Placements,
+			Supported:     slices.Contains(sentMessageTypes, message.Type),
 		})
 	}
 
 	variables := r.personalDataVariables()
 	scopes := r.Scopes()
 	messageTypes, targetLinkURI, deepLinkingURL := r.messageTargets()
+	assetProcessorURL, eulaURL := r.assetProcessorTargets()
 
 	supported := cfg.scopesSupported()
 
@@ -400,27 +418,29 @@ func (r *Registration) Review(cfg Config) RegistrationReview {
 	}
 
 	return RegistrationReview{
-		ClientName:            name,
-		ClientNames:           r.ClientNames,
-		Description:           r.ToolConfiguration.Description,
-		LogoURI:               r.LogoURI,
-		Domains:               r.Domains(),
-		Contacts:              r.Contacts,
-		ClientURI:             r.ClientURI,
-		TOSURI:                r.TOSURI,
-		PolicyURI:             r.PolicyURI,
-		Messages:              messages,
-		MessageTypes:          messageTypes,
-		TargetLinkURI:         targetLinkURI,
-		DeepLinkingURL:        deepLinkingURL,
-		RequestedClaims:       r.ToolConfiguration.Claims,
-		RequestsName:          containsAny(r.ToolConfiguration.Claims, nameClaims) || slices.ContainsFunc(variables, isNameVariable),
-		RequestsEmail:         containsAny(r.ToolConfiguration.Claims, emailClaims) || slices.ContainsFunc(variables, isEmailVariable),
-		PersonalDataVariables: variables,
-		RequestedScopes:       scopes,
-		UnsupportedScopes:     unsupported,
-		OffDomainURIs:         r.offDomainURIs(),
-		PublicSuffixDomains:   r.publicSuffixDomains(),
+		ClientName:                   name,
+		ClientNames:                  r.ClientNames,
+		Description:                  r.ToolConfiguration.Description,
+		LogoURI:                      r.LogoURI,
+		Domains:                      r.Domains(),
+		Contacts:                     r.Contacts,
+		ClientURI:                    r.ClientURI,
+		TOSURI:                       r.TOSURI,
+		PolicyURI:                    r.PolicyURI,
+		Messages:                     messages,
+		MessageTypes:                 messageTypes,
+		TargetLinkURI:                targetLinkURI,
+		DeepLinkingURL:               deepLinkingURL,
+		AssetProcessorDeepLinkingURL: assetProcessorURL,
+		EulaURL:                      eulaURL,
+		RequestedClaims:              r.ToolConfiguration.Claims,
+		RequestsName:                 containsAny(r.ToolConfiguration.Claims, nameClaims) || slices.ContainsFunc(variables, isNameVariable),
+		RequestsEmail:                containsAny(r.ToolConfiguration.Claims, emailClaims) || slices.ContainsFunc(variables, isEmailVariable),
+		PersonalDataVariables:        variables,
+		RequestedScopes:              scopes,
+		UnsupportedScopes:            unsupported,
+		OffDomainURIs:                r.offDomainURIs(),
+		PublicSuffixDomains:          r.publicSuffixDomains(),
 	}
 }
 
@@ -451,6 +471,27 @@ func (r *Registration) messageTargets() (types []lti.MessageType, resourceLink, 
 	}
 
 	return types, resourceLink, deepLinking
+}
+
+// assetProcessorTargets returns where a Deep Linking request that attaches an asset processor goes,
+// and where an LtiEulaRequest goes, each from the first message for it, or the tool's
+// target_link_uri when that message has none. Each is empty when the tool has no message for it.
+func (r *Registration) assetProcessorTargets() (deepLinking, eula string) {
+	tool := r.ToolConfiguration
+
+	for _, message := range tool.Messages {
+		target := cmp.Or(message.TargetLinkURI, tool.TargetLinkURI)
+
+		switch {
+		case deepLinking == "" && message.Type == lti.MessageTypeDeepLinkingRequest &&
+			slices.Contains(message.Placements, lti.PlacementActivityAssetProcessor):
+			deepLinking = target
+		case eula == "" && message.Type == lti.MessageTypeEulaRequest:
+			eula = target
+		}
+	}
+
+	return deepLinking, eula
 }
 
 // PersonalClaims returns the OpenID Connect claims that identify the user by name or email
