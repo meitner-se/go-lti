@@ -441,6 +441,30 @@ func TestDeepLinkingVerifier_Verify_AcceptsAnAssetProcessor(t *testing.T) {
 	assert.Equal(t, map[string]string{}, bare.Custom)
 }
 
+func TestDeepLinkingVerifier_Verify_AssetProcessorCustomIsOptional(t *testing.T) {
+	t.Parallel()
+
+	setup := createTestDeepLinkingSetup(t)
+	claims := createTestDeepLinkingResponseClaims(setup.now)
+	setContentItems(claims,
+		map[string]any{"type": "ltiAssetProcessor"},
+		map[string]any{"type": "ltiAssetProcessor", "custom": nil, "report": map[string]any{"custom": nil}},
+	)
+
+	session := createTestAssetProcessorSession()
+	session.Settings.AcceptMultiple = true
+
+	response, err := setup.verifier.Verify(t.Context(), setup.sign(t, claims), session)
+	require.NoError(t, err)
+	require.Len(t, response.Items, 2)
+
+	for _, item := range response.Items {
+		assert.Empty(t, item.Custom, "no custom parameters")
+	}
+
+	assert.Equal(t, &lti.ContentItemReport{}, response.Items[1].Report)
+}
+
 func TestDeepLinkingVerifier_Verify_RejectsBadAssetProcessors(t *testing.T) {
 	t.Parallel()
 
@@ -450,8 +474,6 @@ func TestDeepLinkingVerifier_Verify_RejectsBadAssetProcessors(t *testing.T) {
 		session func(*DeepLinkingSession)
 		wantErr string
 	}{
-		{"without custom", func(i map[string]any) { delete(i, "custom") }, nil, "without custom parameters"},
-		{"with null custom", func(i map[string]any) { i["custom"] = nil }, nil, "without custom parameters"},
 		{"with custom that isn't an object", func(i map[string]any) { i["custom"] = "proc-7" }, nil, "malformed"},
 		{"with a null custom value", func(i map[string]any) { i["custom"] = map[string]any{"a": nil} }, nil, "null, not a string"},
 		{"with a null report custom value", func(i map[string]any) {

@@ -333,12 +333,12 @@ func validateResourceLink(raw json.RawMessage) error {
 	return nil
 }
 
-// validateAssetProcessor checks an ltiAssetProcessor's custom parameters, which it must have, and
-// its report's: every value is a string, possibly empty, and never null (Asset Processor Content
-// Item).
+// validateAssetProcessor checks an ltiAssetProcessor's custom parameters and its report's (Asset
+// Processor Content Item). Both are optional, and a missing or null object is no parameters, but
+// every value is a string, possibly empty, and never null.
 func validateAssetProcessor(raw json.RawMessage) error {
 	var probe struct {
-		Custom *map[string]*string `json:"custom"`
+		Custom map[string]*string `json:"custom"`
 		Report *struct {
 			Custom map[string]*string `json:"custom"`
 		} `json:"report"`
@@ -348,11 +348,7 @@ func validateAssetProcessor(raw json.RawMessage) error {
 		return reject("deep linking response has a malformed ltiAssetProcessor", err)
 	}
 
-	if probe.Custom == nil || *probe.Custom == nil {
-		return reject("deep linking response has an ltiAssetProcessor without custom parameters", nil)
-	}
-
-	custom := []map[string]*string{*probe.Custom}
+	custom := []map[string]*string{probe.Custom}
 	if probe.Report != nil {
 		custom = append(custom, probe.Report.Custom)
 	}

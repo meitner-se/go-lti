@@ -214,7 +214,7 @@ type DeepLinkingResponse struct {
 // ContentItem is one item in a Deep Linking response (LTI Deep Linking 2.0 §3, and the Asset
 // Processor Content Item for ltiAssetProcessor). Fields that don't apply to the item's type are
 // empty. An ltiAssetProcessor's URL is its settings launch's target link URI, empty for the tool's,
-// and its Custom, which it always has, goes with its settings launches and submission notices.
+// and its Custom, if it has any, goes with its settings launches and submission notices.
 type ContentItem struct {
 	Type      ContentItemType   `json:"type"`
 	Title     string            `json:"title,omitempty"`

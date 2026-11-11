@@ -1,5 +1,5 @@
 {
-  "description": "An ltiAssetProcessor's custom parameters must be an object, not null.",
+  "description": "An ltiAssetProcessor whose custom is null has no custom parameters.",
   "session": {
     "accept_types": [
       "ltiAssetProcessor"
@@ -42,7 +42,6 @@
   },
   "iat_offset_seconds": 0,
   "exp_offset_seconds": 300,
-  "valid": false,
-  "error_code": "invalid_request",
-  "error_description": "ltiAssetProcessor without custom parameters"
+  "valid": true,
+  "items": 1
 }

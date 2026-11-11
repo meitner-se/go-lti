@@ -71,8 +71,9 @@ using a key from the tool's JWKS, setting `iat` and `exp` to the current time pl
 
 A case taken from the spec carries its own `platform_issuer`, `client_id` and `deployment_id`.
 
-An `ltiAssetProcessor` item may be returned only when `accept_types` offers it. It must have
-`custom`, an object whose values, like those of its `report.custom`, are strings and never `null`.
+An `ltiAssetProcessor` item may be returned only when `accept_types` offers it. Its `custom` and
+its `report.custom` are optional, and a missing or `null` object means no parameters, but their
+values are strings, possibly empty, and never `null`.
 
 A valid case has the number of `items` returned. An invalid case has the `error_code` and a
 substring of its `error_description`. Every item URL must be https (LTI 1.3 §3.5); items needn't

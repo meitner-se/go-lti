@@ -1,5 +1,5 @@
 {
-  "description": "An ltiAssetProcessor must have custom parameters, even an empty object.",
+  "description": "An ltiAssetProcessor's custom parameters are optional: an item without them has none.",
   "session": {
     "accept_types": [
       "ltiAssetProcessor"
@@ -41,7 +41,6 @@
   },
   "iat_offset_seconds": 0,
   "exp_offset_seconds": 300,
-  "valid": false,
-  "error_code": "invalid_request",
-  "error_description": "ltiAssetProcessor without custom parameters"
+  "valid": true,
+  "items": 1
 }
