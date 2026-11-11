@@ -28,6 +28,31 @@ The spec's own request examples spell the grant `"implict"` and have a trailing 
 purpose for the typo: the grant type is `implicit`. `valid-spec-example-with-implicit.json` also
 corrects the typo.
 
+## `registration_response/`
+
+The response to a Dynamic Registration `request` that the platform registered with `grant`: its
+`client_id`, `deployment_id`, and the `scopes` and `claims` it granted. The response's `scope` and
+`claims` are what the tool asked for narrowed to the grant. `registration_client_path` is
+`Paths.RegistrationClient` under platform issuer `https://platform.example.com/lti`, or `null` for a
+platform that doesn't serve the client configuration endpoint. `expect_response` is the response
+body: with `registration_client_uri`, the issuer plus the path plus `/{client_id}`, when the
+platform serves the endpoint, and without it otherwise.
+
+## `registration_client/`
+
+A tool's request to its client configuration endpoint (LTI Dynamic Registration 1.0 §4), at platform
+issuer `https://platform.example.com/lti` with `Paths.RegistrationClient` `/registrations`. The
+tool is client `client-1`, whose access token was granted `scopes`. `registered` is its
+registration request as the platform keeps it, any pending update applied, and `grant` is what the
+platform granted, as in `registration_response/`. `method` is `GET` or `PUT`, with the PUT's
+`body`, at the endpoint of `path_client_id`. A PUT's update is kept pending and the answer reflects
+it. `expect_status` is the answer's status: a success has `expect_body`, the registration in the
+registration response's shape with `client_id` and `registration_client_uri`; a refusal has the
+OAuth 2.0 `error_code` and its `error_description`, if any. A GET needs `registration.readonly` or
+`registration`, and a PUT `registration`. A PUT body is checked as a registration request is, with
+the same errors, and refused when its `client_id` isn't the tool's own. Another client's endpoint
+is a 404.
+
 ## `authentication_request/`
 
 `form` is the tool's OIDC authentication request to the authorization endpoint, as form values

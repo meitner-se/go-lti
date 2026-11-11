@@ -347,7 +347,8 @@ type RegistrationReview struct {
 	// $Person.email.primary, that the tool's or its messages' custom parameters ask for.
 	PersonalDataVariables []lti.Variable
 	// RequestedScopes are the service scopes the tool asks for; UnsupportedScopes are the ones the
-	// platform doesn't offer.
+	// platform doesn't offer: not in Config.Scopes, nor the registration scopes of a platform that
+	// serves the client configuration endpoint.
 	RequestedScopes   []lti.Scope
 	UnsupportedScopes []lti.Scope
 	// OffDomainURIs are the login, redirect and launch URIs that aren't on the tool's domain or
@@ -389,9 +390,11 @@ func (r *Registration) Review(cfg Config) RegistrationReview {
 	scopes := r.Scopes()
 	messageTypes, targetLinkURI, deepLinkingURL := r.messageTargets()
 
+	supported := cfg.scopesSupported()
+
 	var unsupported []lti.Scope
 	for _, scope := range scopes {
-		if !slices.Contains(cfg.Scopes, scope) {
+		if !slices.Contains(supported, scope) {
 			unsupported = append(unsupported, scope)
 		}
 	}
@@ -476,11 +479,17 @@ type RegistrationGrant struct {
 
 // RegistrationResponse is the client information response to a registration (LTI Dynamic
 // Registration 1.0 §3.6.1, RFC 7591 §3.2.1):
-// the registered metadata with the tool's client_id and deployment_id.
+// the registered metadata with the tool's client_id and deployment_id. The client configuration
+// endpoint answers in the same shape (§4.1).
 //
-//nolint:tagliatelle // RFC 7591 §3.2.1 defines snake_case keys
+//nolint:tagliatelle // RFC 7591 §3.2.1 and RFC 7592 §3 define snake_case keys
 type RegistrationResponse struct {
 	ClientID string `json:"client_id"`
+	// RegistrationClientURI is where the tool reads and updates its registration, its client
+	// configuration endpoint (§2.3, §4): Config.RegistrationClientURL of its client_id. NewHandler
+	// sets it when it serves the endpoint; a platform with its own HTTP handling sets it itself.
+	// Empty, and left out, when the platform doesn't offer the endpoint.
+	RegistrationClientURI string `json:"registration_client_uri,omitempty"`
 	Registration
 }
 

@@ -165,8 +165,8 @@ func ParseContentItemType(s string) (ContentItemType, error) {
 // Scope is an LTI service scope.
 type Scope string
 
-// Assignment and Grade Services 2.0, Names and Role Provisioning Services 2.0 and LTI Platform
-// Notification Service scopes.
+// Assignment and Grade Services 2.0, Names and Role Provisioning Services 2.0, LTI Platform
+// Notification Service and LTI Dynamic Registration 1.0 scopes.
 const (
 	ScopeAGSLineItem         Scope = "https://purl.imsglobal.org/spec/lti-ags/scope/lineitem"
 	ScopeAGSLineItemReadOnly Scope = "https://purl.imsglobal.org/spec/lti-ags/scope/lineitem.readonly"
@@ -175,6 +175,12 @@ const (
 	ScopeNRPSMembershipRead  Scope = "https://purl.imsglobal.org/spec/lti-nrps/scope/contextmembership.readonly"
 	// ScopeNoticeHandlers lets a tool read and replace its notice handlers.
 	ScopeNoticeHandlers Scope = "https://purl.imsglobal.org/spec/lti/scope/noticehandlers"
+	// ScopeRegistrationReadOnly lets a tool read its own Dynamic Registration at its client
+	// configuration endpoint (LTI Dynamic Registration 1.0 §4.2).
+	ScopeRegistrationReadOnly Scope = "https://purl.imsglobal.org/spec/lti-reg/scope/registration.readonly"
+	// ScopeRegistration lets a tool read its own Dynamic Registration and submit an update to it
+	// (LTI Dynamic Registration 1.0 §4.2).
+	ScopeRegistration Scope = "https://purl.imsglobal.org/spec/lti-reg/scope/registration"
 )
 
 // Variable is a substitution variable for custom parameter values (LTI 1.3 Appendix B),

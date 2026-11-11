@@ -85,8 +85,9 @@ type Handlers struct {
 	// without one is answered 401 before AuthorizeService is called. scope is the scope the service
 	// needs, such as lti.ScopeNRPSMembershipRead: a client whose Scopes don't include it is refused
 	// with a 403, so AuthorizeService needn't check it. A read of line items, which
-	// lti.ScopeAGSLineItem allows too, gets lti.ScopeAGSLineItemReadOnly. Set it with the services
-	// that use it, and only then.
+	// lti.ScopeAGSLineItem allows too, gets lti.ScopeAGSLineItemReadOnly, and a read of a
+	// registration, which lti.ScopeRegistration allows too, gets lti.ScopeRegistrationReadOnly. Set
+	// it with the services that use it, and only then.
 	//
 	// Return an *lti.Error with lti.ErrorInvalidToken for a token that is unknown, expired or
 	// revoked; the tool gets a 401 with RFC 6750 §3's challenge. One with
@@ -161,6 +162,31 @@ type Handlers struct {
 	// the platform can't honour (a 400), or ErrNoticeHandlersForbidden (a 403). Any other error is
 	// answered as for AuthorizeService.
 	ReplaceNoticeHandler func(r *http.Request, client ServiceClient, deploymentID string, registration lti.NoticeHandlerRegistration) error
+	// ReadRegistration and UpdateRegistration serve the client configuration endpoint of LTI
+	// Dynamic Registration 1.0 §4, where a tool reads and updates its own registration. Set
+	// Paths.RegistrationClient and both of them together, with AuthorizeService, to serve it. The
+	// tool gets its access token from the token endpoint with its client credentials (§4.1), for
+	// lti.ScopeRegistrationReadOnly or lti.ScopeRegistration, so there is no registration access
+	// token. go-lti has checked that the endpoint in the request's path is client's own, and answers
+	// another client's with a 404.
+	//
+	// Both return client's registration in the registration response's shape, such as
+	// Registration.Response of the registration the platform keeps and what it granted; go-lti sets
+	// its ClientID, which never changes, and its RegistrationClientURI. Return an error that is or
+	// wraps ErrRegistrationNotFound for a client without a Dynamic Registration (a 404), or
+	// ErrRegistrationForbidden for one the platform doesn't let manage its registration (a 403). Any
+	// other error is answered as for AuthorizeService.
+	//
+	// ReadRegistration returns client's registration with any pending update applied, for a client
+	// granted lti.ScopeRegistrationReadOnly or lti.ScopeRegistration.
+	ReadRegistration func(r *http.Request, client ServiceClient) (RegistrationResponse, error)
+	// UpdateRegistration submits reg as an update of client's registration, for a client granted
+	// lti.ScopeRegistration. go-lti has checked reg with ParseRegistration, and refused a client_id
+	// other than client's. The spec asks that an update not apply at once (§4): keep it pending, such
+	// as for an admin to review, and return the registration reflecting the pending update, as
+	// ReadRegistration will return it. An *lti.Error with lti.ErrorInvalidClientMetadata, such as
+	// for a domain the platform won't let the tool change, gets a 400.
+	UpdateRegistration func(r *http.Request, client ServiceClient, reg *Registration) (RegistrationResponse, error)
 	// Logger, when set, logs every error a tool or browser is answered with: a rejection at Warn
 	// with its code, any other error at Error.
 	Logger *slog.Logger
@@ -195,6 +221,13 @@ type Handlers struct {
 //     whose access token AuthorizeService finds granted lti.ScopeNoticeHandlers. GET answers the
 //     deployment's notice handlers and PUT replaces the handler of one notice type. Served with
 //     Paths.NoticeHandlers, ReadNoticeHandlers and ReplaceNoticeHandler, which need AuthorizeService.
+//   - Paths.RegistrationClient plus "/{client_id}": the client configuration endpoint (LTI Dynamic
+//     Registration 1.0 §4), for the tool with that client_id. GET answers its registration, for a
+//     tool whose access token AuthorizeService finds granted lti.ScopeRegistrationReadOnly or
+//     lti.ScopeRegistration, and PUT submits an update of it, for one granted
+//     lti.ScopeRegistration. Served with Paths.RegistrationClient, ReadRegistration and
+//     UpdateRegistration, which need AuthorizeService. A registration's response then has its
+//     registration_client_uri.
 //
 // Mount it to receive every request under the issuer's path, with the path unchanged. Any other
 // path is a 404 and any other method a 405. An error page sent to a browser is plain text with
@@ -202,7 +235,8 @@ type Handlers struct {
 // can't make an OpenID configuration, h has no Register, h has only one of Keys and Launch, h has
 // only some of the Deep Linking fields, only one of Paths.ContextMemberships and ListContextMembers
 // is set, only some of Paths.ContextLineItems and the line item hooks are set, only some of
-// Paths.NoticeHandlers and the notice handler hooks are set, a service is served without
+// Paths.NoticeHandlers and the notice handler hooks are set, only some of Paths.RegistrationClient
+// and the registration hooks are set, a service is served without
 // AuthorizeService, or AuthorizeService is set without any service that uses it.
 func NewHandler(cfg Config, h Handlers) (http.Handler, error) {
 	if h.Register == nil {
@@ -235,8 +269,13 @@ func NewHandler(cfg Config, h Handlers) (http.Handler, error) {
 		return nil, errors.New("lti: the handler needs all of Paths.NoticeHandlers, ReadNoticeHandlers and ReplaceNoticeHandler to serve the platform notification service, or none")
 	}
 
+	registrationClient := []bool{cfg.Paths.RegistrationClient != "", h.ReadRegistration != nil, h.UpdateRegistration != nil}
+	if slices.Contains(registrationClient, true) && slices.Contains(registrationClient, false) {
+		return nil, errors.New("lti: the handler needs all of Paths.RegistrationClient, ReadRegistration and UpdateRegistration to serve the client configuration endpoint, or none")
+	}
+
 	// Each LTI service endpoint the handler serves, all of which AuthorizeService authorizes.
-	services := []bool{h.ListContextMembers != nil, h.ListLineItems != nil, h.ReadNoticeHandlers != nil}
+	services := []bool{h.ListContextMembers != nil, h.ListLineItems != nil, h.ReadNoticeHandlers != nil, h.ReadRegistration != nil}
 	if slices.Contains(services, true) && h.AuthorizeService == nil {
 		return nil, errors.New("lti: the handler needs AuthorizeService to serve LTI services")
 	}
@@ -312,6 +351,12 @@ func NewHandler(cfg Config, h Handlers) (http.Handler, error) {
 		mux.HandleFunc("PUT "+noticeHandlers, e.replaceNoticeHandler)
 	}
 
+	if h.ReadRegistration != nil {
+		registrationClient := issuer.Path + cfg.Paths.RegistrationClient + "/{client}"
+		mux.HandleFunc("GET "+registrationClient, e.readRegistration)
+		mux.HandleFunc("PUT "+registrationClient, e.updateRegistration)
+	}
+
 	return mux, nil
 }
 
@@ -334,7 +379,8 @@ type endpoints struct {
 // register answers a POSTed registration. It reads the registration token from the
 // Authorization header's Bearer scheme, refuses a body over MaxRegistrationBytes, checks the body
 // with ParseRegistration and hands it to Register. A saved registration is answered 200 OK
-// with Response(grant); a rejection with RFC 7591 §3.2.2's error response, plus a Bearer
+// with Response(grant), with its registration_client_uri when the handler serves the client
+// configuration endpoint; a rejection with RFC 7591 §3.2.2's error response, plus a Bearer
 // challenge for invalid_token (RFC 6750 §3). Every answer has Cache-Control: no-store.
 //
 // OpenID Connect Registration §3.2 says a success SHOULD be 201 Created, so 200 is allowed. Moodle
@@ -371,7 +417,18 @@ func (e *endpoints) register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	encoded, err := json.Marshal(reg.Response(grant))
+	response := reg.Response(grant)
+
+	if e.handlers.ReadRegistration != nil {
+		response.RegistrationClientURI, err = e.config.RegistrationClientURL(grant.ClientID)
+		if err != nil {
+			e.failRegistration(w, r, err)
+
+			return
+		}
+	}
+
+	encoded, err := json.Marshal(response)
 	if err != nil {
 		e.failRegistration(w, r, err)
 

@@ -1,8 +1,10 @@
 package platform
 
 import (
+	"context"
 	"encoding/json"
 	"io/fs"
+	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -495,6 +497,110 @@ func TestNewHandler_NoticeHandlers_Vectors(t *testing.T) {
 			}
 
 			assert.JSONEq(t, string(v.ExpectBody), w.Body.String(), v.Description)
+		})
+	}
+}
+
+//nolint:tagliatelle // the vector files are shared with other languages and use snake_case
+type registrationVectorGrant struct {
+	ClientID     string      `json:"client_id"`
+	DeploymentID string      `json:"deployment_id"`
+	Scopes       []lti.Scope `json:"scopes"`
+	Claims       []string    `json:"claims"`
+}
+
+func (g registrationVectorGrant) grant(clientID string) RegistrationGrant {
+	return RegistrationGrant{ClientID: clientID, DeploymentID: g.DeploymentID, Scopes: g.Scopes, Claims: g.Claims}
+}
+
+//nolint:tagliatelle // the vector files are shared with other languages and use snake_case
+type registrationClientVector struct {
+	Description      string                  `json:"description"`
+	Scopes           []lti.Scope             `json:"scopes"`
+	Registered       json.RawMessage         `json:"registered"`
+	Grant            registrationVectorGrant `json:"grant"`
+	Method           string                  `json:"method"`
+	PathClientID     string                  `json:"path_client_id"`
+	Body             json.RawMessage         `json:"body"`
+	ExpectStatus     int                     `json:"expect_status"`
+	ExpectBody       json.RawMessage         `json:"expect_body"`
+	ErrorCode        lti.ErrorCode           `json:"error_code"`
+	ErrorDescription string                  `json:"error_description"`
+}
+
+func TestNewHandler_RegistrationClient_Vectors(t *testing.T) {
+	t.Parallel()
+
+	for name, v := range loadVectors[registrationClientVector](t, "registration_client") {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			registered, err := ParseRegistration(v.Registered)
+			require.NoError(t, err, v.Description)
+
+			s := newRegistrationClientServer(t)
+			s.tokens["token-vector"] = ServiceClient{ClientID: "client-1", Scopes: v.Scopes}
+			s.registrations["client-1"] = registered
+			s.grants["client-1"] = v.Grant.grant("client-1")
+
+			cfg := createRegistrationClientTestConfig()
+
+			handler, err := NewHandler(cfg, s.handlers())
+			require.NoError(t, err)
+
+			target, err := cfg.RegistrationClientURL(v.PathClientID)
+			require.NoError(t, err)
+
+			w := callAGS(t, handler, v.Method, target, "token-vector", string(v.Body))
+			require.Equal(t, v.ExpectStatus, w.Code, v.Description+": "+w.Body.String())
+
+			if v.ErrorCode != "" {
+				requireAGSError(t, w, v.ExpectStatus, v.ErrorCode, v.ErrorDescription)
+				assert.Empty(t, s.updates, v.Description)
+
+				return
+			}
+
+			assert.JSONEq(t, string(v.ExpectBody), w.Body.String(), v.Description)
+		})
+	}
+}
+
+//nolint:tagliatelle // the vector files are shared with other languages and use snake_case
+type registrationResponseVector struct {
+	Description            string                  `json:"description"`
+	Request                json.RawMessage         `json:"request"`
+	Grant                  registrationVectorGrant `json:"grant"`
+	RegistrationClientPath string                  `json:"registration_client_path"`
+	ExpectResponse         json.RawMessage         `json:"expect_response"`
+}
+
+func TestNewHandler_RegistrationResponse_Vectors(t *testing.T) {
+	t.Parallel()
+
+	for name, v := range loadVectors[registrationResponseVector](t, "registration_response") {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			cfg := createTestConfig()
+			h := Handlers{
+				Register: func(_ context.Context, _ string, _ *Registration) (RegistrationGrant, error) {
+					return v.Grant.grant(v.Grant.ClientID), nil
+				},
+			}
+
+			if v.RegistrationClientPath != "" {
+				cfg.Paths.RegistrationClient = v.RegistrationClientPath
+				s := newRegistrationClientServer(t)
+				h.AuthorizeService, h.ReadRegistration, h.UpdateRegistration = s.authorize, s.read, s.update
+			}
+
+			handler, err := NewHandler(cfg, h)
+			require.NoError(t, err)
+
+			w := postRegistration(t, handler, "", string(v.Request))
+			require.Equal(t, http.StatusOK, w.Code, v.Description+": "+w.Body.String())
+			assert.JSONEq(t, string(v.ExpectResponse), w.Body.String(), v.Description)
 		})
 	}
 }

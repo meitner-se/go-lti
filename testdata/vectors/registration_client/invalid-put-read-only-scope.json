@@ -1,0 +1,73 @@
+{
+  "description": "The registration.readonly scope doesn't allow a PUT.",
+  "scopes": [
+    "https://purl.imsglobal.org/spec/lti-reg/scope/registration.readonly"
+  ],
+  "registered": {
+    "response_types": [
+      "id_token"
+    ],
+    "grant_types": [
+      "implicit",
+      "client_credentials"
+    ],
+    "initiate_login_uri": "https://client.example.org/lti",
+    "redirect_uris": [
+      "https://client.example.org/callback"
+    ],
+    "client_name": "Virtual Garden",
+    "jwks_uri": "https://client.example.org/.well-known/jwks.json",
+    "token_endpoint_auth_method": "private_key_jwt",
+    "scope": "https://purl.imsglobal.org/spec/lti-ags/scope/score https://purl.imsglobal.org/spec/lti-reg/scope/registration",
+    "https://purl.imsglobal.org/spec/lti-tool-configuration": {
+      "domain": "client.example.org",
+      "target_link_uri": "https://client.example.org/lti",
+      "claims": [
+        "iss",
+        "sub",
+        "email"
+      ]
+    }
+  },
+  "grant": {
+    "deployment_id": "deployment-1",
+    "scopes": [
+      "https://purl.imsglobal.org/spec/lti-ags/scope/score",
+      "https://purl.imsglobal.org/spec/lti-reg/scope/registration"
+    ],
+    "claims": [
+      "iss",
+      "sub"
+    ]
+  },
+  "method": "PUT",
+  "path_client_id": "client-1",
+  "body": {
+    "response_types": [
+      "id_token"
+    ],
+    "grant_types": [
+      "implicit",
+      "client_credentials"
+    ],
+    "initiate_login_uri": "https://client.example.org/lti",
+    "redirect_uris": [
+      "https://client.example.org/callback"
+    ],
+    "client_name": "Virtual Garden 2",
+    "jwks_uri": "https://client.example.org/.well-known/jwks.json",
+    "token_endpoint_auth_method": "private_key_jwt",
+    "scope": "https://purl.imsglobal.org/spec/lti-ags/scope/score https://purl.imsglobal.org/spec/lti-reg/scope/registration",
+    "https://purl.imsglobal.org/spec/lti-tool-configuration": {
+      "domain": "client.example.org",
+      "target_link_uri": "https://client.example.org/lti/v2",
+      "claims": [
+        "iss",
+        "sub",
+        "email"
+      ]
+    }
+  },
+  "expect_status": 403,
+  "error_code": "insufficient_scope"
+}
