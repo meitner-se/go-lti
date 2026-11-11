@@ -515,8 +515,7 @@ func TestConfig_OpenIDConfiguration_AssetProcessor(t *testing.T) {
 	configuration, err = cfg.OpenIDConfiguration()
 	require.NoError(t, err)
 
-	body, err := json.Marshal(configuration)
-	require.NoError(t, err)
+	body, _ := json.Marshal(configuration)
 
 	var got map[string]json.RawMessage
 	require.NoError(t, json.Unmarshal(body, &got))

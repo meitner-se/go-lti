@@ -223,7 +223,9 @@ func (s AssetProcessorSubmission) Notice() (Notice, error) {
 func checkAssets(assets []lti.Asset) error {
 	seen := make(map[string]bool, len(assets))
 
-	for _, asset := range assets {
+	for i := range assets {
+		asset := &assets[i]
+
 		if err := checkIdentifier("asset id", asset.ID); err != nil {
 			return err
 		}
