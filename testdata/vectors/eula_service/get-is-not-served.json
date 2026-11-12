@@ -1,0 +1,10 @@
+{
+  "description": "The service has nothing to read: a GET is not allowed.",
+  "scopes": [
+    "https://purl.imsglobal.org/spec/lti/scope/eula/user"
+  ],
+  "method": "GET",
+  "deployment_id": "deployment-1",
+  "endpoint": "user",
+  "expect_status": 405
+}

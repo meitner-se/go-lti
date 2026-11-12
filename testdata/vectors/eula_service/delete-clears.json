@@ -1,0 +1,13 @@
+{
+  "description": "A DELETE clears every user's acceptance in the deployment.",
+  "scopes": [
+    "https://purl.imsglobal.org/spec/lti/scope/eula/user"
+  ],
+  "method": "DELETE",
+  "deployment_id": "deployment-1",
+  "endpoint": "user",
+  "expect_status": 204,
+  "expect_hook": {
+    "clear_acceptances": true
+  }
+}

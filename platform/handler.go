@@ -187,6 +187,43 @@ type Handlers struct {
 	// ReadRegistration will return it. An *lti.Error with lti.ErrorInvalidClientMetadata, such as
 	// for a domain the platform won't let the tool change, gets a 400.
 	UpdateRegistration func(r *http.Request, client ServiceClient, reg *Registration) (RegistrationResponse, error)
+	// GetAsset serves the LTI Asset Service: it returns the asset with assetID, unescaped from the
+	// URL's path, for a client granted lti.ScopeAssetReadOnly, as its bytes or where they are (see
+	// AssetDownload). Set Paths.Assets and GetAsset together, with AuthorizeService, to serve it.
+	// Check that client may download the asset, such as by its being in a submission notice sent to
+	// client, and return an error that is or wraps ErrAssetNotFound otherwise (a 404). Any other
+	// error is answered as for AuthorizeService.
+	GetAsset func(r *http.Request, client ServiceClient, assetID string) (AssetDownload, error)
+	// PostReport serves the LTI Asset Report Service: it saves report for the processor with
+	// processorID, unescaped from the report URL's path (see Config.AssetReportURL), for a client
+	// granted lti.ScopeReport. Set Paths.AssetReports and PostReport together, with
+	// AuthorizeService, to serve it. go-lti has decoded the report leniently, as lti.Report
+	// describes. A report replaces the one the platform has with the same AssetID and Type when its
+	// Timestamp is the same or later; return nil for an earlier one, which may be discarded.
+	//
+	// Check that the processor is client's, and return an error that is or wraps
+	// ErrAssetProcessorNotFound otherwise (a 404). Return an *lti.Error with
+	// lti.ErrorInvalidRequest for an AssetID the platform never sent for the processor (a 400). Any
+	// other error is answered as for AuthorizeService.
+	PostReport func(r *http.Request, client ServiceClient, processorID string, report lti.Report) error
+	// RecordEulaAcceptance, ClearEulaAcceptances and SetEulaRequired serve the EULA service of the
+	// deployment with deploymentID, unescaped from the URL's path (see Config.EulaServiceURL). Set
+	// Paths.Eula and all three together, with AuthorizeService, to serve it. The platform keeps
+	// acceptances only to know whether to show the EULA again, so there is nothing to read back.
+	// Check that client may use the deployment, such as by its being client's own, and return an
+	// error that is or wraps ErrDeploymentNotFound otherwise (a 404). Any other error is answered as
+	// for AuthorizeService.
+	//
+	// RecordEulaAcceptance saves whether a user accepted the EULA, for a client granted
+	// lti.ScopeEulaUser. go-lti has checked that acceptance has a UserID and a Timestamp. Ignore an
+	// acceptance older than the one the platform has for the user.
+	RecordEulaAcceptance func(r *http.Request, client ServiceClient, deploymentID string, acceptance lti.EulaAcceptance) error
+	// ClearEulaAcceptances forgets every user's acceptance in the deployment, such as after the
+	// EULA changed, for a client granted lti.ScopeEulaUser.
+	ClearEulaAcceptances func(r *http.Request, client ServiceClient, deploymentID string) error
+	// SetEulaRequired saves whether users in the deployment must accept the EULA, for a client
+	// granted lti.ScopeEulaDeployment. A deployment requires it until the tool says otherwise.
+	SetEulaRequired func(r *http.Request, client ServiceClient, deploymentID string, required bool) error
 	// Logger, when set, logs every error a tool or browser is answered with: a rejection at Warn
 	// with its code, any other error at Error.
 	Logger *slog.Logger
@@ -228,6 +265,20 @@ type Handlers struct {
 //     lti.ScopeRegistration. Served with Paths.RegistrationClient, ReadRegistration and
 //     UpdateRegistration, which need AuthorizeService. A registration's response then has its
 //     registration_client_uri.
+//   - GET Paths.Assets plus "/{asset}": the LTI Asset Service, for a tool whose access token
+//     AuthorizeService finds granted lti.ScopeAssetReadOnly. It answers with the asset's bytes and
+//     its Content-Type, or 302 Found to where GetAsset says they are. Served with Paths.Assets and
+//     GetAsset, which need AuthorizeService.
+//   - POST Paths.AssetReports plus "/{processor}": the LTI Asset Report Service, for a tool whose
+//     access token AuthorizeService finds granted lti.ScopeReport. It decodes one report
+//     leniently, hands it to PostReport and answers 200 with the report object the tool sent.
+//     Served with Paths.AssetReports and PostReport, which need AuthorizeService.
+//   - Paths.Eula plus "/{deployment}": the deployment's EULA service. POST "/user" records a user's
+//     acceptance (200, with the acceptance the tool sent) and DELETE "/user" clears every user's
+//     (204), for a tool granted lti.ScopeEulaUser; PUT "/deployment" says whether the deployment
+//     requires the EULA (200, with the setting the tool sent), for one granted
+//     lti.ScopeEulaDeployment. Served with Paths.Eula, RecordEulaAcceptance, ClearEulaAcceptances
+//     and SetEulaRequired, which need AuthorizeService.
 //
 // Mount it to receive every request under the issuer's path, with the path unchanged. Any other
 // path is a 404 and any other method a 405. An error page sent to a browser is plain text with
@@ -236,7 +287,9 @@ type Handlers struct {
 // only some of the Deep Linking fields, only one of Paths.ContextMemberships and ListContextMembers
 // is set, only some of Paths.ContextLineItems and the line item hooks are set, only some of
 // Paths.NoticeHandlers and the notice handler hooks are set, only some of Paths.RegistrationClient
-// and the registration hooks are set, a service is served without
+// and the registration hooks are set, only one of Paths.Assets and GetAsset or of
+// Paths.AssetReports and PostReport is set, only some of Paths.Eula and the EULA hooks are set, a
+// service is served without
 // AuthorizeService, or AuthorizeService is set without any service that uses it.
 func NewHandler(cfg Config, h Handlers) (http.Handler, error) {
 	if h.Register == nil {
@@ -274,8 +327,24 @@ func NewHandler(cfg Config, h Handlers) (http.Handler, error) {
 		return nil, errors.New("lti: the handler needs all of Paths.RegistrationClient, ReadRegistration and UpdateRegistration to serve the client configuration endpoint, or none")
 	}
 
+	if (cfg.Paths.Assets != "") != (h.GetAsset != nil) {
+		return nil, errors.New("lti: the handler needs both Paths.Assets and GetAsset to serve the asset service, or neither")
+	}
+
+	if (cfg.Paths.AssetReports != "") != (h.PostReport != nil) {
+		return nil, errors.New("lti: the handler needs both Paths.AssetReports and PostReport to serve the asset report service, or neither")
+	}
+
+	eula := []bool{cfg.Paths.Eula != "", h.RecordEulaAcceptance != nil, h.ClearEulaAcceptances != nil, h.SetEulaRequired != nil}
+	if slices.Contains(eula, true) && slices.Contains(eula, false) {
+		return nil, errors.New("lti: the handler needs all of Paths.Eula, RecordEulaAcceptance, ClearEulaAcceptances and SetEulaRequired to serve the eula service, or none")
+	}
+
 	// Each LTI service endpoint the handler serves, all of which AuthorizeService authorizes.
-	services := []bool{h.ListContextMembers != nil, h.ListLineItems != nil, h.ReadNoticeHandlers != nil, h.ReadRegistration != nil}
+	services := []bool{
+		h.ListContextMembers != nil, h.ListLineItems != nil, h.ReadNoticeHandlers != nil, h.ReadRegistration != nil,
+		h.GetAsset != nil, h.PostReport != nil, h.RecordEulaAcceptance != nil,
+	}
 	if slices.Contains(services, true) && h.AuthorizeService == nil {
 		return nil, errors.New("lti: the handler needs AuthorizeService to serve LTI services")
 	}
@@ -355,6 +424,21 @@ func NewHandler(cfg Config, h Handlers) (http.Handler, error) {
 		registrationClient := issuer.Path + cfg.Paths.RegistrationClient + "/{client}"
 		mux.HandleFunc("GET "+registrationClient, e.readRegistration)
 		mux.HandleFunc("PUT "+registrationClient, e.updateRegistration)
+	}
+
+	if h.GetAsset != nil {
+		mux.HandleFunc("GET "+issuer.Path+cfg.Paths.Assets+"/{asset}", e.getAsset)
+	}
+
+	if h.PostReport != nil {
+		mux.HandleFunc("POST "+issuer.Path+cfg.Paths.AssetReports+"/{processor}", e.postReport)
+	}
+
+	if h.RecordEulaAcceptance != nil {
+		eulaService := issuer.Path + cfg.Paths.Eula + "/{deployment}"
+		mux.HandleFunc("POST "+eulaService+"/user", e.recordEulaAcceptance)
+		mux.HandleFunc("DELETE "+eulaService+"/user", e.clearEulaAcceptances)
+		mux.HandleFunc("PUT "+eulaService+"/deployment", e.setEulaRequired)
 	}
 
 	return mux, nil

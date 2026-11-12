@@ -165,6 +165,54 @@ refused: a notice needs the context, the owner's `user_id` and the activity's an
 a `sub` needs `roles`, and each asset needs a unique id, an absolute https URL, its SHA-256 digest
 in base64, its upload timestamp and its content type.
 
+## `asset_service/`
+
+A tool's GET of an asset from the Asset Service, at platform issuer
+`https://platform.example.com/lti` with `Paths.Assets` `/assets`, so the asset's URL is
+`https://platform.example.com/lti/assets/{asset_id}` with `asset_id` path-escaped. The tool is client
+`client-1`, whose access token was granted `scopes`. `asset` is what the platform has for the id:
+its `content_type` and `content`, or the `redirect_url` of the storage it is in, or `null` for an
+asset it doesn't have or that isn't the tool's. `expect_status` is the answer's status: a 200 has
+the asset's `expect_content_type` and `expect_body`, a 302 has `expect_location`, and a refusal has
+the OAuth 2.0 `error_code`. The service needs the `asset.readonly` scope.
+
+## `asset_report/`
+
+A tool's POST of one report to a processor's report URL with the Asset Report Service, at platform
+issuer `https://platform.example.com/lti` with `Paths.AssetReports` `/asset-reports`, so the URL is
+`https://platform.example.com/lti/asset-reports/{processor_id}`. The platform has processor
+`processor-1` only. The tool is client `client-1`, whose access token was granted `scopes`, and
+`body` is the report. `expect_status` is the answer's status: a 200's body is the report as the
+tool sent it, and `expect_report` is the report as the platform reads it, written back with its
+timestamp to the microsecond. A refusal has the OAuth 2.0 `error_code` and, for a 400 or 404, its
+`error_description`.
+
+The service needs the `report` scope. A report needs `assetId`, `type`, `timestamp`, a `priority`
+from 0 to 5 and `processingProgress`, and each member must have its JSON type. Reading is
+otherwise lenient: an unknown `processingProgress` is `NotReady`, an `errorCode` may be the tool's
+own, `result` and `indicationAlt` aren't cut, an `indicationColor` is kept without an
+`indicationAlt`, a `timestamp` may have any precision, a basic offset or no time zone (UTC), and a
+`priority` may be a whole float. Every other member, such as one named after the tool's domain, is
+kept as it is.
+
+## `eula_service/`
+
+A tool's request to a deployment's EULA service, at platform issuer
+`https://platform.example.com/lti` with `Paths.Eula` `/eula`, so the service is
+`https://platform.example.com/lti/eula/{deployment_id}` and the request goes to its `/{endpoint}`,
+`user` or `deployment`. The platform has deployment `deployment-1` only. The tool is client
+`client-1`, whose access token was granted `scopes`; `method` is `POST`, `DELETE`, `PUT` or `GET`,
+with the request's `body`, if any.
+
+`expect_status` is the answer's status: a 200 has `expect_body`, the object the tool sent, and a
+refusal has the OAuth 2.0 `error_code` and, for a 400 or 404, its `error_description`.
+`expect_hook` is what the platform was asked to do: `record_acceptance` with the acceptance (its
+timestamp written to the millisecond), `clear_acceptances`, or `set_eula_required` with the
+setting; a case without it asks nothing. `POST /user` takes `{userId, accepted, timestamp}`, all
+required, and `DELETE /user` clears every user's acceptance, both with the `eula/user` scope;
+`PUT /deployment` takes `{eulaRequired}`, required, with the `eula/deployment` scope. There is
+nothing to GET. A timestamp without a time zone is UTC.
+
 ## `substitution/`
 
 A launch message and the `custom` parameters it is sent with, as configured. `message_type` is

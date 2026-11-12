@@ -500,14 +500,9 @@ func readLineItem(w http.ResponseWriter, r *http.Request) (lti.LineItem, error) 
 
 // readServiceBody decodes a JSON body of at most maxServiceBodyBytes into v. what names it.
 func readServiceBody(w http.ResponseWriter, r *http.Request, what string, v any) error {
-	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxServiceBodyBytes))
+	body, err := readServiceBytes(w, r, what, maxServiceBodyBytes)
 	if err != nil {
-		var tooLarge *http.MaxBytesError
-		if errors.As(err, &tooLarge) {
-			return lti.NewError(lti.ErrorInvalidRequest, fmt.Sprintf("the %s is larger than %d bytes", what, tooLarge.Limit), err)
-		}
-
-		return lti.NewError(lti.ErrorInvalidRequest, "the "+what+" could not be read", err)
+		return err
 	}
 
 	if err := json.Unmarshal(body, v); err != nil {
@@ -515,6 +510,22 @@ func readServiceBody(w http.ResponseWriter, r *http.Request, what string, v any)
 	}
 
 	return nil
+}
+
+// readServiceBytes reads the body a tool sent, refusing one over limit bytes with an error that keeps
+// the *http.MaxBytesError, which failService answers with 413.
+func readServiceBytes(w http.ResponseWriter, r *http.Request, what string, limit int64) ([]byte, error) {
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, limit))
+	if err != nil {
+		var tooLarge *http.MaxBytesError
+		if errors.As(err, &tooLarge) {
+			return nil, lti.NewError(lti.ErrorInvalidRequest, fmt.Sprintf("the %s is larger than %d bytes", what, tooLarge.Limit), err)
+		}
+
+		return nil, lti.NewError(lti.ErrorInvalidRequest, "the "+what+" could not be read", err)
+	}
+
+	return body, nil
 }
 
 var (

@@ -1,0 +1,34 @@
+{
+  "description": "A report with every member is saved as it is.",
+  "scopes": [
+    "https://purl.imsglobal.org/spec/lti/scope/report"
+  ],
+  "processor_id": "processor-1",
+  "body": {
+    "assetId": "asset-1",
+    "type": "originality",
+    "timestamp": "2026-11-10T12:00:00.123456Z",
+    "priority": 1,
+    "processingProgress": "Processed",
+    "title": "Originality",
+    "result": "12%",
+    "comment": "Matches two web sources.",
+    "indicationColor": "#2e7d32",
+    "indicationAlt": "Low similarity",
+    "visibleToOwner": true
+  },
+  "expect_status": 200,
+  "expect_report": {
+    "assetId": "asset-1",
+    "type": "originality",
+    "timestamp": "2026-11-10T12:00:00.123456Z",
+    "priority": 1,
+    "processingProgress": "Processed",
+    "title": "Originality",
+    "result": "12%",
+    "comment": "Matches two web sources.",
+    "indicationColor": "#2e7d32",
+    "indicationAlt": "Low similarity",
+    "visibleToOwner": true
+  }
+}

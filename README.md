@@ -2,7 +2,7 @@
 
 LTI 1.3 and LTI Advantage for Go, for the platform side: the system that launches tools, such as an LMS.
 
-It covers the launch (the OIDC third-party login flow and the signed id_token), verifying Deep Linking 2.0 responses, Dynamic Registration 1.0 (registration and the client configuration endpoint), the platform's OpenID configuration and JWKS, Names and Role Provisioning Services 2.0 (the launch claim and the memberships endpoint), Assignment and Grade Services 2.0 (the launch claim and the line item, score and result endpoints), the LTI Platform Notification Service (the launch claim, the notice handler endpoint and signed notices) and the messages and claims of LTI Asset Processor (its content item, its settings, report review and EULA launches, and its submission notice). LTI 1.1 is not supported.
+It covers the launch (the OIDC third-party login flow and the signed id_token), verifying Deep Linking 2.0 responses, Dynamic Registration 1.0 (registration and the client configuration endpoint), the platform's OpenID configuration and JWKS, Names and Role Provisioning Services 2.0 (the launch claim and the memberships endpoint), Assignment and Grade Services 2.0 (the launch claim and the line item, score and result endpoints), the LTI Platform Notification Service (the launch claim, the notice handler endpoint and signed notices) and LTI Asset Processor (its content item, its settings, report review and EULA launches, its submission notice, and the Asset, Asset Report and EULA services). LTI 1.1 is not supported.
 
 ```sh
 go get github.com/meitner-se/go-lti
@@ -14,8 +14,8 @@ Work in progress: the API may change until v1.0.0.
 
 | Package | What it does |
 | -- | -- |
-| `lti` | Types both sides of LTI share: messages and claims, content items, membership containers, line items, scores and results, notice handlers and notices, the Asset Processor claims, roles, scopes and other spec vocabulary, signing keys, and `Error`. |
-| `platform` | The platform side: its `Config`, its record of each `Tool`, the launch flow, Deep Linking verification, Dynamic Registration and its client configuration endpoint, the OpenID configuration, the Names and Role Provisioning Services endpoint, the Assignment and Grade Services endpoints, the Platform Notification Service endpoint and notices, and the Asset Processor submission notice. |
+| `lti` | Types both sides of LTI share: messages and claims, content items, membership containers, line items, scores and results, notice handlers and notices, the Asset Processor claims, reports and EULA bodies, roles, scopes and other spec vocabulary, signing keys, and `Error`. |
+| `platform` | The platform side: its `Config`, its record of each `Tool`, the launch flow, Deep Linking verification, Dynamic Registration and its client configuration endpoint, the OpenID configuration, the Names and Role Provisioning Services endpoint, the Assignment and Grade Services endpoints, the Platform Notification Service endpoint and notices, and the Asset Processor submission notice and services. |
 | `jwks` | Publishes the platform's keys and fetches tools' keys, with caching. |
 | `safehttp` | An HTTP client that won't connect to private or internal addresses, for URLs a tool controls. |
 | `ltitest` | Test keys, a JWKS server and an in-memory nonce store. |
@@ -331,9 +331,9 @@ A notice JWT carries `iss`, `aud`, `iat`, `exp` (`platform.NoticeTTL` after `iat
 
 ## Asset Processor
 
-LTI Asset Processor lets a tool, such as an originality checker, process the files students submit to an activity and report on each. A teacher attaches a processor to the activity with Deep Linking, opens its settings with a settings launch, students may first accept the tool's EULA with a EULA launch, each submission sends the tool a notice, and a report review launch shows a report. go-lti builds these messages and checks what the tool returns; the Asset, Asset Report and EULA services the tool calls back are not part of it yet.
+LTI Asset Processor lets a tool, such as an originality checker, process the files students submit to an activity and report on each. A teacher attaches a processor to the activity with Deep Linking, opens its settings with a settings launch, students may first accept the tool's EULA with a EULA launch, each submission sends the tool a notice, and a report review launch shows a report. go-lti builds these messages, checks what the tool returns and serves the Asset, Asset Report and EULA services the tool calls back; what to store and show is the platform's.
 
-Set `cfg.AssetProcessor`, and the OpenID configuration lists the `ActivityAssetProcessor` placement on `LtiDeepLinkingRequest` and the `LtiAssetProcessorSettingsRequest`, `LtiReportReviewRequest` and `LtiEulaRequest` messages. Add the scopes you offer (`lti.ScopeAssetReadOnly`, `lti.ScopeReport`, `lti.ScopeEulaUser`, `lti.ScopeEulaDeployment`) to `cfg.Scopes`, and `lti.NoticeTypeAssetProcessorSubmission` to `cfg.NoticeTypes`. A tool asks for Deep Linking from an activity with the `ActivityAssetProcessor` placement on its `LtiDeepLinkingRequest` message; `RegistrationReview.AssetProcessorDeepLinkingURL` is where that request goes, and `EulaURL` where its EULA launch goes.
+Set `cfg.AssetProcessor`, and the OpenID configuration lists the `ActivityAssetProcessor` placement on `LtiDeepLinkingRequest` and the `LtiAssetProcessorSettingsRequest`, `LtiReportReviewRequest` and `LtiEulaRequest` messages. Add `lti.NoticeTypeAssetProcessorSubmission` to `cfg.NoticeTypes`. Each service's path adds its scopes to `scopes_supported` (see below), so you needn't list them in `cfg.Scopes`. A tool asks for Deep Linking from an activity with the `ActivityAssetProcessor` placement on its `LtiDeepLinkingRequest` message; `RegistrationReview.AssetProcessorDeepLinkingURL` is where that request goes, and `EulaURL` where its EULA launch goes.
 
 **Attaching a processor.** Offer `lti.ContentItemTypeLTIAssetProcessor` in the Deep Linking request's `AcceptTypes` and set its `Activity`, the activity's id, fixed even before the activity is saved; a request that offers the type without it is refused. Set `PlatformNotificationService` too, since the tool registers its submission notice handler before it answers. `Verify` refuses an `ltiAssetProcessor` the request didn't offer, and a `custom` or `report.custom` value that is `null`; both objects are optional. Each item is a processor: keep its `URL` (the settings launch's target, empty for the tool's), `Custom`, sent with its settings launches and notices, and `Report`, whose `URL` and `Custom` go with its report reviews. A nil `Report` means the tool posts no reports.
 
@@ -373,13 +373,51 @@ jwt, err := launcher.SignNotice(ctx, tool, notice)
 
 `Notice` refuses a submission without a context, an owner, an activity or a submission id, a `Subject` without `Roles`, and an asset without an id, an https URL, a base64-encoded SHA-256 checksum, a timestamp, a size or a content type. The `assetservice` and `assetreport` claims carry their only scope.
 
+**The services.** Set a path for each service you offer, and its hooks, with `AuthorizeService`; `NewHandler` serves it and the OpenID configuration lists its scopes:
+
+| Service | Path and URL helper | Endpoints | Scope | Hooks |
+| -- | -- | -- | -- | -- |
+| Asset | `Paths.Assets`, `cfg.AssetURL(assetID)`: each asset's `URL` in the notice | `GET /{asset}` | `asset.readonly` | `GetAsset` |
+| Asset Report | `Paths.AssetReports`, `cfg.AssetReportURL(processorID)`: the notice's `ReportURL` | `POST /{processor}` | `report` | `PostReport` |
+| EULA | `Paths.Eula`, `cfg.EulaService(deploymentID)`: the EULA launch's `EulaService` | `POST /{deployment}/user`, `DELETE /{deployment}/user`, `PUT /{deployment}/deployment` | `eula/user`, `eula/deployment` | `RecordEulaAcceptance`, `ClearEulaAcceptances`, `SetEulaRequired` |
+
+```go
+cfg.Paths.Assets = "/assets"              // https://lms.example.com/lti/assets/{asset}
+cfg.Paths.AssetReports = "/asset-reports" // https://lms.example.com/lti/asset-reports/{processor}
+cfg.Paths.Eula = "/eula"                  // https://lms.example.com/lti/eula/{deployment}
+
+handler, err := platform.NewHandler(cfg, platform.Handlers{
+	Register:         register,
+	AuthorizeService: authorizeService,
+	GetAsset: func(r *http.Request, client platform.ServiceClient, assetID string) (platform.AssetDownload, error) {
+		// Check that the asset was sent to client, or return platform.ErrAssetNotFound (404).
+		if inObjectStorage {
+			return platform.AssetDownload{RedirectURL: signedURL}, nil // a 302
+		}
+
+		return platform.AssetDownload{Body: file, ContentType: asset.ContentType, Size: asset.Size}, nil
+	},
+	PostReport: func(r *http.Request, client platform.ServiceClient, processorID string, report lti.Report) error {
+		// Keep report for (processorID, report.AssetID, report.Type) unless yours is newer.
+		return nil // or platform.ErrAssetProcessorNotFound (404)
+	},
+	RecordEulaAcceptance: func(r *http.Request, client platform.ServiceClient, deploymentID string, acceptance lti.EulaAcceptance) error {
+		return nil // or platform.ErrDeploymentNotFound (404)
+	},
+	ClearEulaAcceptances: func(r *http.Request, client platform.ServiceClient, deploymentID string) error { return nil },
+	SetEulaRequired:      func(r *http.Request, client platform.ServiceClient, deploymentID string, required bool) error { return nil },
+})
+```
+
+An asset is answered with the `Content-Type` `GetAsset` returns, which must be the `content_type` the notice sent; a `RedirectURL` must be https, and the tool follows it without its token. A report is answered 200 with the object the tool posted. go-lti reads it leniently, so a tool isn't turned away for what the platform can still show: it needs `assetId`, `type`, `timestamp`, a `priority` from 0 to 5 and `processingProgress`, reads an unknown progress as `NotReady`, keeps a tool's own `errorCode`, a long `result` and an `indicationColor` without its `indicationAlt`, accepts a timestamp of any precision (one without a time zone is UTC), and keeps every other member, such as one named after the tool's domain, in `Report.Extensions`. The EULA service has nothing to read: `POST /user` takes `{userId, accepted, timestamp}` (200, with the object), `DELETE /user` forgets every user's (204) and `PUT /deployment` takes `{eulaRequired}` (200, with the object). Ignore an acceptance older than the one you have; a deployment requires the EULA until the tool says otherwise.
+
 ## Errors
 
 A rejection of something a tool or a browser sent is an `*lti.Error` with the spec's error code (such as `invalid_request` or `invalid_redirect_uri`) and a description that is safe to send back. Any other error is your platform's own, such as a signer or network failure.
 
 ## Test vectors
 
-`testdata/vectors/` holds JSON cases with their expected results, for JWKS documents, Dynamic Registration requests and responses, the client configuration endpoint, Deep Linking responses, custom parameter substitution, the Names and Role Provisioning Services, Assignment and Grade Services and Platform Notification Service launch claims, the notice handler endpoint, notice JWTs, and the Asset Processor launches and submission notice. go-lti's tests run them, and an implementation in another language can run the same cases. See [testdata/vectors/README.md](testdata/vectors/README.md).
+`testdata/vectors/` holds JSON cases with their expected results, for JWKS documents, Dynamic Registration requests and responses, the client configuration endpoint, Deep Linking responses, custom parameter substitution, the Names and Role Provisioning Services, Assignment and Grade Services and Platform Notification Service launch claims, the notice handler endpoint, notice JWTs, the Asset Processor launches and submission notice, and the Asset, Asset Report and EULA services. go-lti's tests run them, and an implementation in another language can run the same cases. See [testdata/vectors/README.md](testdata/vectors/README.md).
 
 ## Security
 

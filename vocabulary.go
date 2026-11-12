@@ -274,3 +274,33 @@ func (s Sharing) allows(variable Variable) bool {
 		return true
 	}
 }
+
+// ProcessingProgress is how far a tool has come with processing an asset, as an Asset Report
+// Service report says it.
+type ProcessingProgress string
+
+// Processing progress values. A platform reads a value it doesn't know as
+// ProcessingProgressNotReady.
+const (
+	ProcessingProgressNotReady      ProcessingProgress = "NotReady"
+	ProcessingProgressProcessed     ProcessingProgress = "Processed"
+	ProcessingProgressProcessing    ProcessingProgress = "Processing"
+	ProcessingProgressPending       ProcessingProgress = "Pending"
+	ProcessingProgressPendingManual ProcessingProgress = "PendingManual"
+	ProcessingProgressFailed        ProcessingProgress = "Failed"
+	ProcessingProgressNotProcessed  ProcessingProgress = "NotProcessed"
+)
+
+// ReportErrorCode says why a tool failed to process an asset, in a report whose progress is
+// ProcessingProgressFailed. A tool may send a code of its own; a platform still shows the failure
+// and the report's comment.
+type ReportErrorCode string
+
+// Report error codes the Asset Report Service names.
+const (
+	ReportErrorCodeUnsupportedAssetType ReportErrorCode = "UNSUPPORTED_ASSET_TYPE"
+	ReportErrorCodeAssetTooLarge        ReportErrorCode = "ASSET_TOO_LARGE"
+	ReportErrorCodeAssetTooSmall        ReportErrorCode = "ASSET_TOO_SMALL"
+	ReportErrorCodeEulaNotAccepted      ReportErrorCode = "EULA_NOT_ACCEPTED"
+	ReportErrorCodeDownloadFailed       ReportErrorCode = "DOWNLOAD_FAILED"
+)

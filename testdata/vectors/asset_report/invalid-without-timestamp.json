@@ -1,0 +1,16 @@
+{
+  "description": "A report needs its timestamp.",
+  "scopes": [
+    "https://purl.imsglobal.org/spec/lti/scope/report"
+  ],
+  "processor_id": "processor-1",
+  "body": {
+    "assetId": "asset-1",
+    "type": "originality",
+    "priority": 1,
+    "processingProgress": "Processed"
+  },
+  "expect_status": 400,
+  "error_code": "invalid_request",
+  "error_description": "the report's timestamp is missing"
+}

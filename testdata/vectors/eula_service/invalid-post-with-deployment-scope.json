@@ -1,0 +1,16 @@
+{
+  "description": "Recording an acceptance needs the eula/user scope.",
+  "scopes": [
+    "https://purl.imsglobal.org/spec/lti/scope/eula/deployment"
+  ],
+  "method": "POST",
+  "deployment_id": "deployment-1",
+  "endpoint": "user",
+  "body": {
+    "userId": "user-1",
+    "accepted": true,
+    "timestamp": "2026-11-10T12:00:00.123Z"
+  },
+  "expect_status": 403,
+  "error_code": "insufficient_scope"
+}

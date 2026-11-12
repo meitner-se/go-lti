@@ -1,0 +1,14 @@
+{
+  "description": "The deployment setting needs the eula/deployment scope.",
+  "scopes": [
+    "https://purl.imsglobal.org/spec/lti/scope/eula/user"
+  ],
+  "method": "PUT",
+  "deployment_id": "deployment-1",
+  "endpoint": "deployment",
+  "body": {
+    "eulaRequired": false
+  },
+  "expect_status": 403,
+  "error_code": "insufficient_scope"
+}

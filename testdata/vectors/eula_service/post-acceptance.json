@@ -1,0 +1,27 @@
+{
+  "description": "A user's acceptance is recorded and answered as it was sent.",
+  "scopes": [
+    "https://purl.imsglobal.org/spec/lti/scope/eula/user"
+  ],
+  "method": "POST",
+  "deployment_id": "deployment-1",
+  "endpoint": "user",
+  "body": {
+    "userId": "user-1",
+    "accepted": true,
+    "timestamp": "2026-11-10T12:00:00.123Z"
+  },
+  "expect_status": 200,
+  "expect_body": {
+    "userId": "user-1",
+    "accepted": true,
+    "timestamp": "2026-11-10T12:00:00.123Z"
+  },
+  "expect_hook": {
+    "record_acceptance": {
+      "userId": "user-1",
+      "accepted": true,
+      "timestamp": "2026-11-10T12:00:00.123Z"
+    }
+  }
+}

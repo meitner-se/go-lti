@@ -3,7 +3,8 @@
 // configuration endpoint, the OpenID configuration,
 // the Names and Role Provisioning Services memberships endpoint, the Assignment and Grade Services
 // line item, score and result endpoints, the LTI Platform Notification Service's notice handler
-// endpoint and signed notices, and the LTI Asset Processor launches and submission notice.
+// endpoint and signed notices, and the LTI Asset Processor launches, submission notice and its
+// Asset, Asset Report and EULA services.
 package platform
 
 import (

@@ -1,0 +1,14 @@
+{
+  "description": "An asset in other storage is answered with a 302 to it.",
+  "scopes": [
+    "https://purl.imsglobal.org/spec/lti/scope/asset.readonly"
+  ],
+  "asset_id": "asset-1",
+  "asset": {
+    "content_type": "application/pdf",
+    "content": null,
+    "redirect_url": "https://storage.example.com/asset-1?signature=abc"
+  },
+  "expect_status": 302,
+  "expect_location": "https://storage.example.com/asset-1?signature=abc"
+}

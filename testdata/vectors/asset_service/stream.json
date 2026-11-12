@@ -1,0 +1,15 @@
+{
+  "description": "The asset's bytes are answered with its content type.",
+  "scopes": [
+    "https://purl.imsglobal.org/spec/lti/scope/asset.readonly"
+  ],
+  "asset_id": "asset-1",
+  "asset": {
+    "content_type": "application/pdf",
+    "content": "%PDF-1.7 an essay",
+    "redirect_url": null
+  },
+  "expect_status": 200,
+  "expect_content_type": "application/pdf",
+  "expect_body": "%PDF-1.7 an essay"
+}

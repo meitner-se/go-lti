@@ -178,3 +178,148 @@ func TestContentItem_DecodesAnAssetProcessorReport(t *testing.T) {
 	assert.Equal(t, &lti.ContentItemReport{}, item.Report, "an empty report still says the tool posts reports")
 	assert.Equal(t, map[string]string{}, item.Custom)
 }
+
+func TestReport_UnmarshalJSON_IsLenient(t *testing.T) {
+	t.Parallel()
+
+	const base = `"assetId": "asset-1", "type": "originality", "priority": 0`
+
+	tests := []struct {
+		name string
+		body string
+		want func(r *lti.Report)
+	}{
+		{
+			name: "an unknown processingProgress is NotReady",
+			body: `{` + base + `, "timestamp": "2026-11-10T12:00:00.000001Z", "processingProgress": "Queued"}`,
+			want: func(r *lti.Report) { r.ProcessingProgress = lti.ProcessingProgressNotReady },
+		},
+		{
+			name: "an empty processingProgress is NotReady",
+			body: `{` + base + `, "timestamp": "2026-11-10T12:00:00.000001Z", "processingProgress": ""}`,
+			want: func(r *lti.Report) { r.ProcessingProgress = lti.ProcessingProgressNotReady },
+		},
+		{
+			name: "a tool's own errorCode is kept",
+			body: `{` + base + `, "timestamp": "2026-11-10T12:00:00.000001Z", "processingProgress": "Failed", "errorCode": "TOOL_OVERLOADED"}`,
+			want: func(r *lti.Report) {
+				r.ProcessingProgress = lti.ProcessingProgressFailed
+				r.ErrorCode = "TOOL_OVERLOADED"
+			},
+		},
+		{
+			name: "a timestamp to the second",
+			body: `{` + base + `, "timestamp": "2026-11-10T13:00:00+01:00", "processingProgress": "Processed"}`,
+			want: func(r *lti.Report) { r.Timestamp = time.Date(2026, 11, 10, 12, 0, 0, 0, time.UTC) },
+		},
+		{
+			name: "a timestamp with a basic offset",
+			body: `{` + base + `, "timestamp": "2026-11-10T12:00:00.000001+0000", "processingProgress": "Processed"}`,
+			want: func(*lti.Report) {},
+		},
+		{
+			name: "a timestamp without a time zone is UTC",
+			body: `{` + base + `, "timestamp": "2026-11-10T12:00:00.000001", "processingProgress": "Processed"}`,
+			want: func(*lti.Report) {},
+		},
+		{
+			name: "a long result, and a color without an alt",
+			body: `{` + base + `, "timestamp": "2026-11-10T12:00:00.000001Z", "processingProgress": "Processed", "result": "seventeen chars!!", "indicationColor": "#ff0000"}`,
+			want: func(r *lti.Report) {
+				r.Result = "seventeen chars!!"
+				r.IndicationColor = "#ff0000"
+			},
+		},
+		{
+			name: "other members are kept as raw JSON",
+			body: `{` + base + `, "timestamp": "2026-11-10T12:00:00.000001Z", "processingProgress": "Processed", "https://tool.example.com/similarity": {"sources": 3}}`,
+			want: func(r *lti.Report) {
+				r.Extensions = map[string]json.RawMessage{"https://tool.example.com/similarity": json.RawMessage(`{"sources": 3}`)}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			want := lti.Report{
+				AssetID: "asset-1", Type: "originality", Timestamp: time.Date(2026, 11, 10, 12, 0, 0, 1000, time.UTC),
+				ProcessingProgress: lti.ProcessingProgressProcessed,
+			}
+			tt.want(&want)
+
+			var got lti.Report
+			require.NoError(t, json.Unmarshal([]byte(tt.body), &got))
+			assert.True(t, want.Timestamp.Equal(got.Timestamp), got.Timestamp.String())
+
+			got.Timestamp = want.Timestamp
+			assert.Equal(t, want, got)
+		})
+	}
+}
+
+func TestReport_MarshalJSON(t *testing.T) {
+	t.Parallel()
+
+	report := lti.Report{
+		AssetID: "asset-1", Type: "originality", Timestamp: time.Date(2026, 11, 10, 12, 0, 0, 0, time.UTC), Priority: 0,
+		ProcessingProgress: lti.ProcessingProgressPending,
+		Extensions: map[string]json.RawMessage{
+			"https://tool.example.com/queue": json.RawMessage(`4`),
+			"assetId":                        json.RawMessage(`"overridden"`),
+		},
+	}
+
+	body, err := json.Marshal(report)
+	require.NoError(t, err)
+	assert.JSONEq(t, `{
+		"assetId": "asset-1",
+		"type": "originality",
+		"timestamp": "2026-11-10T12:00:00.000000Z",
+		"priority": 0,
+		"processingProgress": "Pending",
+		"https://tool.example.com/queue": 4
+	}`, string(body))
+
+	var back lti.Report
+	require.NoError(t, json.Unmarshal(body, &back))
+	assert.Equal(t, report.Timestamp, back.Timestamp)
+	assert.Equal(t, map[string]json.RawMessage{"https://tool.example.com/queue": json.RawMessage(`4`)}, back.Extensions)
+}
+
+func TestReport_UnmarshalJSON_RefusesWithAnInvalidRequest(t *testing.T) {
+	t.Parallel()
+
+	for body, description := range map[string]string{
+		`"report"`: "the report is not a JSON object",
+		`{"assetId": "asset-1", "type": "t", "timestamp": "2026-11-10T12:00:00Z", "processingProgress": "Processed"}`:                 "the report's priority is missing",
+		`{"assetId": "asset-1", "type": "t", "timestamp": "2026-11-10T12:00:00Z", "priority": -1, "processingProgress": "Processed"}`: "the report's priority must be an integer from 0 to 5",
+		`{"assetId": "asset-1", "type": "t", "priority": 0, "processingProgress": "Processed"}`:                                       "the report's timestamp is missing",
+	} {
+		var report lti.Report
+
+		err := json.Unmarshal([]byte(body), &report)
+		rejection, ok := lti.AsError(err)
+		require.True(t, ok, body)
+		assert.Equal(t, lti.ErrorInvalidRequest, rejection.Code, body)
+		assert.Equal(t, description, rejection.Description, body)
+	}
+}
+
+func TestEulaAcceptance_JSON(t *testing.T) {
+	t.Parallel()
+
+	var acceptance lti.EulaAcceptance
+	require.NoError(t, json.Unmarshal([]byte(`{"userId": "user-1", "accepted": false, "timestamp": "2026-11-10T12:00:00Z", "other": 1}`), &acceptance))
+	assert.Equal(t, lti.EulaAcceptance{UserID: "user-1", Accepted: false, Timestamp: time.Date(2026, 11, 10, 12, 0, 0, 0, time.UTC)}, acceptance)
+
+	body, err := json.Marshal(acceptance)
+	require.NoError(t, err)
+	assert.JSONEq(t, `{"userId": "user-1", "accepted": false, "timestamp": "2026-11-10T12:00:00.000Z"}`, string(body))
+
+	var setting lti.EulaDeployment
+	require.NoError(t, json.Unmarshal([]byte(`{"eulaRequired": true}`), &setting))
+	assert.True(t, setting.EulaRequired)
+	require.Error(t, json.Unmarshal([]byte(`{}`), &setting))
+}

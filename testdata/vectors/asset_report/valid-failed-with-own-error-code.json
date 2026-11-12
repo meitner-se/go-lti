@@ -1,0 +1,26 @@
+{
+  "description": "A failure may carry an errorCode of the tool's own.",
+  "scopes": [
+    "https://purl.imsglobal.org/spec/lti/scope/report"
+  ],
+  "processor_id": "processor-1",
+  "body": {
+    "assetId": "asset-1",
+    "type": "originality",
+    "timestamp": "2026-11-10T12:00:00.123456Z",
+    "priority": 1,
+    "processingProgress": "Failed",
+    "errorCode": "TOOL_OVERLOADED",
+    "comment": "Try again later."
+  },
+  "expect_status": 200,
+  "expect_report": {
+    "assetId": "asset-1",
+    "type": "originality",
+    "timestamp": "2026-11-10T12:00:00.123456Z",
+    "priority": 1,
+    "processingProgress": "Failed",
+    "errorCode": "TOOL_OVERLOADED",
+    "comment": "Try again later."
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "description": "A priority is from 0 to 5.",
+  "scopes": [
+    "https://purl.imsglobal.org/spec/lti/scope/report"
+  ],
+  "processor_id": "processor-1",
+  "body": {
+    "assetId": "asset-1",
+    "type": "originality",
+    "timestamp": "2026-11-10T12:00:00.123456Z",
+    "priority": 6,
+    "processingProgress": "Processed"
+  },
+  "expect_status": 400,
+  "error_code": "invalid_request",
+  "error_description": "the report's priority must be an integer from 0 to 5"
+}

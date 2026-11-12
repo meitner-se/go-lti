@@ -1,0 +1,10 @@
+{
+  "description": "An asset the platform doesn't have, or that isn't the tool's, is a 404.",
+  "scopes": [
+    "https://purl.imsglobal.org/spec/lti/scope/asset.readonly"
+  ],
+  "asset_id": "asset-1",
+  "asset": null,
+  "expect_status": 404,
+  "error_code": "invalid_request"
+}

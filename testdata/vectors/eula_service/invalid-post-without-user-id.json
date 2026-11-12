@@ -1,0 +1,16 @@
+{
+  "description": "An acceptance needs its userId.",
+  "scopes": [
+    "https://purl.imsglobal.org/spec/lti/scope/eula/user"
+  ],
+  "method": "POST",
+  "deployment_id": "deployment-1",
+  "endpoint": "user",
+  "body": {
+    "accepted": true,
+    "timestamp": "2026-11-10T12:00:00Z"
+  },
+  "expect_status": 400,
+  "error_code": "invalid_request",
+  "error_description": "the acceptance's userId is missing"
+}
