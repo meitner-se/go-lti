@@ -1,0 +1,43 @@
+{
+  "description": "The owner's name and email address in for_user are personal data, left out when sharing doesn't allow them.",
+  "message_type": "LtiReportReviewRequest",
+  "message": {
+    "context": {
+      "id": "course-1",
+      "title": "Biology 1"
+    },
+    "roles": [
+      "http://purl.imsglobal.org/vocab/lis/v2/membership#Instructor"
+    ],
+    "activity": {
+      "id": "activity-1"
+    },
+    "for_user": {
+      "user_id": "7b1c2d3e-4f5a-6b7c-8d9e-0f1a2b3c4d5e",
+      "given_name": "Grace",
+      "family_name": "Hopper",
+      "name": "Grace Hopper",
+      "email": "grace@example.com",
+      "roles": [
+        "http://purl.imsglobal.org/vocab/lis/v2/membership#Learner"
+      ]
+    },
+    "submission": {
+      "id": "submission-1"
+    },
+    "asset": {
+      "id": "asset-1"
+    },
+    "assetreport_type": "originality"
+  },
+  "valid": true,
+  "expect_claims": {
+    "https://purl.imsglobal.org/spec/lti/claim/for_user": {
+      "user_id": "7b1c2d3e-4f5a-6b7c-8d9e-0f1a2b3c4d5e",
+      "roles": [
+        "http://purl.imsglobal.org/vocab/lis/v2/membership#Learner"
+      ]
+    }
+  },
+  "expect_absent": []
+}

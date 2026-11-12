@@ -71,6 +71,10 @@ using a key from the tool's JWKS, setting `iat` and `exp` to the current time pl
 
 A case taken from the spec carries its own `platform_issuer`, `client_id` and `deployment_id`.
 
+An `ltiAssetProcessor` item may be returned only when `accept_types` offers it. Its `custom` and
+its `report.custom` are optional, and a missing or `null` object means no parameters, but their
+values are strings, possibly empty, and never `null`.
+
 A valid case has the number of `items` returned. An invalid case has the `error_code` and a
 substring of its `error_description`. Every item URL must be https (LTI 1.3 §3.5); items needn't
 be on the tool's domains.
@@ -129,6 +133,37 @@ A notice the platform signs for tool `client-1` as platform issuer
 `nonce`, which are new on every signature. The notice's `timestamp` keeps its time zone and is
 written to the millisecond. An invalid case must be refused: a notice needs a `deployment_id`, an
 `id`, a `type` and a `timestamp`.
+
+## `asset_processor_launch/`
+
+An Asset Processor launch, laid out as id_token claims for tool `client-1` in deployment
+`deployment-1`. `message_type` is `LtiDeepLinkingRequest`, `LtiAssetProcessorSettingsRequest`,
+`LtiReportReviewRequest` or `LtiEulaRequest`, and `message` holds what the platform sets: the
+Deep Linking request's `accept_types`, the `context`, `roles`, `sharing`, `custom` and
+`context_memberships_url`, and the message's own `activity`, `for_user`, `submission`, `asset`,
+`assetreport_type` and `eulaservice`. A valid case has `expect_claims`, claims the launch must send
+with exactly these values, and `expect_absent`, claims it must not send. An invalid case must be
+refused:
+
+- a Deep Linking request that offers `ltiAssetProcessor` needs the `activity` claim;
+- a settings launch needs a context and the activity's id;
+- a report review needs a context, the activity's id, the owner's `user_id`, the submission's and
+  the asset's ids and the report type, and has no resource link. The owner's name and email address
+  are sent only when `sharing` allows them;
+- a EULA launch needs the EULA service, an absolute https URL with one or both of the two EULA
+  scopes. It carries no context services, and without a context no context roles.
+
+## `asset_processor_submission/`
+
+An `LtiAssetProcessorSubmissionNotice` the platform signs for tool `client-1`, as in `notice/`.
+`submission` is the notice's `deployment_id`, `id` and `timestamp`, the `sub` and `roles` of a user
+who submitted for the owner, if any, the `context`, the owner in `for_user`, the `activity`, the
+`submission`, the owner's current `assets`, the `report_url`, if any, and the processor's `custom`.
+A valid case has `expect_claims`, as in `notice/`: the `assetservice` claim carries the
+`asset.readonly` scope and the `assetreport` claim the `report` scope. An invalid case must be
+refused: a notice needs the context, the owner's `user_id` and the activity's and submission's ids,
+a `sub` needs `roles`, and each asset needs a unique id, an absolute https URL, its SHA-256 digest
+in base64, its upload timestamp and its content type.
 
 ## `substitution/`
 

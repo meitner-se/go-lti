@@ -35,6 +35,11 @@ type Config struct {
 	// sees them. A tool may register a handler only for one of them. The OpenID configuration lists
 	// them whenever the platform offers the service, as an empty array when there are none.
 	NoticeTypes []lti.NoticeType
+	// AssetProcessor says the platform supports LTI Asset Processor: its OpenID configuration lists
+	// the ActivityAssetProcessor placement on Deep Linking and the LtiAssetProcessorSettingsRequest,
+	// LtiReportReviewRequest and LtiEulaRequest messages. List the Asset Processor scopes the
+	// platform offers in Scopes, and LtiAssetProcessorSubmissionNotice in NoticeTypes.
+	AssetProcessor bool
 }
 
 // PathOpenIDConfiguration is where the platform's OpenID configuration is under its issuer. OpenID

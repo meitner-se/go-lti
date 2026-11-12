@@ -1,0 +1,22 @@
+{
+  "description": "A EULA launch carries no context services, such as Names and Role Provisioning Services.",
+  "message_type": "LtiEulaRequest",
+  "message": {
+    "context": {
+      "id": "course-1",
+      "title": "Biology 1"
+    },
+    "roles": [
+      "http://purl.imsglobal.org/vocab/lis/v2/membership#Learner"
+    ],
+    "eulaservice": {
+      "url": "https://platform.example.com/lti/eula/deployment-1",
+      "scope": [
+        "https://purl.imsglobal.org/spec/lti/scope/eula/user",
+        "https://purl.imsglobal.org/spec/lti/scope/eula/deployment"
+      ]
+    },
+    "context_memberships_url": "https://platform.example.com/lti/contexts/course-1/memberships"
+  },
+  "valid": false
+}

@@ -66,6 +66,7 @@ func setContentItems(claims map[string]any, items ...map[string]any) {
 
 var allContentItemTypes = []lti.ContentItemType{
 	lti.ContentItemTypeLTIResourceLink, lti.ContentItemTypeLink, lti.ContentItemTypeFile, lti.ContentItemTypeImage, lti.ContentItemTypeHTML,
+	lti.ContentItemTypeLTIAssetProcessor,
 }
 
 type deepLinkingTestSetup struct {

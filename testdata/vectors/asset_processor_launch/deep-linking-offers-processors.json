@@ -1,0 +1,26 @@
+{
+  "description": "A Deep Linking request that offers ltiAssetProcessor carries the activity the processors attach to.",
+  "message_type": "LtiDeepLinkingRequest",
+  "message": {
+    "accept_types": [
+      "ltiAssetProcessor"
+    ],
+    "context": {
+      "id": "course-1",
+      "title": "Biology 1"
+    },
+    "roles": [
+      "http://purl.imsglobal.org/vocab/lis/v2/membership#Instructor"
+    ],
+    "activity": {
+      "id": "activity-1"
+    }
+  },
+  "valid": true,
+  "expect_claims": {
+    "https://purl.imsglobal.org/spec/lti/claim/activity": {
+      "id": "activity-1"
+    }
+  },
+  "expect_absent": []
+}

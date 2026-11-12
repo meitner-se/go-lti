@@ -40,14 +40,18 @@ type PlatformConfiguration struct {
 	NoticeTypesSupported []lti.NoticeType `json:"notice_types_supported,omitzero"`
 }
 
-// SupportedMessage is a message type the platform sends.
+// SupportedMessage is a message type the platform sends, and the placements it sends it from, if
+// it names them (LTI Dynamic Registration 1.0 §2.1.2).
 type SupportedMessage struct {
-	Type lti.MessageType `json:"type"`
+	Type       lti.MessageType `json:"type"`
+	Placements []string        `json:"placements,omitempty"`
 }
 
 // OpenIDConfiguration returns the platform's OpenID configuration document. Its scopes_supported
 // are openid and Config.Scopes, plus lti.ScopeRegistrationReadOnly and lti.ScopeRegistration when
-// Paths.RegistrationClient is set. It fails when the
+// Paths.RegistrationClient is set. Its messages_supported are LtiResourceLinkRequest and
+// LtiDeepLinkingRequest, plus, when Config.AssetProcessor is set, the ActivityAssetProcessor
+// placement on LtiDeepLinkingRequest and the three Asset Processor messages. It fails when the
 // config is invalid, or lacks what Dynamic Registration requires: a token endpoint, and the
 // product's family code and version.
 func (c Config) OpenIDConfiguration() (OpenIDConfiguration, error) {
@@ -93,14 +97,31 @@ func (c Config) OpenIDConfiguration() (OpenIDConfiguration, error) {
 		IDTokenSigningAlgValuesSupported: []string{"RS256"},
 		ClaimsSupported:                  []string{"iss", "sub", "aud", "azp", "iat", "exp", "nonce", "name", "given_name", "family_name", "email"},
 		PlatformConfiguration: PlatformConfiguration{
-			ProductFamilyCode: c.Product.FamilyCode,
-			Version:           c.Product.Version,
-			MessagesSupported: []SupportedMessage{
-				{Type: lti.MessageTypeResourceLinkRequest},
-				{Type: lti.MessageTypeDeepLinkingRequest},
-			},
+			ProductFamilyCode:    c.Product.FamilyCode,
+			Version:              c.Product.Version,
+			MessagesSupported:    c.messagesSupported(),
 			Variables:            c.Variables,
 			NoticeTypesSupported: noticeTypes,
 		},
 	}, nil
+}
+
+// messagesSupported returns the message types the platform sends, for its platform configuration.
+func (c Config) messagesSupported() []SupportedMessage {
+	if !c.AssetProcessor {
+		return []SupportedMessage{
+			{Type: lti.MessageTypeResourceLinkRequest},
+			{Type: lti.MessageTypeDeepLinkingRequest},
+		}
+	}
+
+	// Dynamic Registration lets a platform name a message's placements; Asset Processor support is
+	// the Deep Linking request's ActivityAssetProcessor placement.
+	return []SupportedMessage{
+		{Type: lti.MessageTypeResourceLinkRequest},
+		{Type: lti.MessageTypeDeepLinkingRequest, Placements: []string{lti.PlacementActivityAssetProcessor}},
+		{Type: lti.MessageTypeAssetProcessorSettingsRequest},
+		{Type: lti.MessageTypeReportReviewRequest},
+		{Type: lti.MessageTypeEulaRequest},
+	}
 }

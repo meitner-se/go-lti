@@ -1,0 +1,34 @@
+{
+  "description": "A EULA launch is the deployment's: it carries the EULA service and, without a context, no context roles.",
+  "message_type": "LtiEulaRequest",
+  "message": {
+    "roles": [
+      "http://purl.imsglobal.org/vocab/lis/v2/institution/person#Student"
+    ],
+    "eulaservice": {
+      "url": "https://platform.example.com/lti/eula/deployment-1",
+      "scope": [
+        "https://purl.imsglobal.org/spec/lti/scope/eula/user",
+        "https://purl.imsglobal.org/spec/lti/scope/eula/deployment"
+      ]
+    }
+  },
+  "valid": true,
+  "expect_claims": {
+    "https://purl.imsglobal.org/spec/lti/claim/message_type": "LtiEulaRequest",
+    "https://purl.imsglobal.org/spec/lti/claim/eulaservice": {
+      "url": "https://platform.example.com/lti/eula/deployment-1",
+      "scope": [
+        "https://purl.imsglobal.org/spec/lti/scope/eula/user",
+        "https://purl.imsglobal.org/spec/lti/scope/eula/deployment"
+      ]
+    },
+    "https://purl.imsglobal.org/spec/lti/claim/roles": [
+      "http://purl.imsglobal.org/vocab/lis/v2/institution/person#Student"
+    ]
+  },
+  "expect_absent": [
+    "https://purl.imsglobal.org/spec/lti/claim/resource_link",
+    "https://purl.imsglobal.org/spec/lti/claim/context"
+  ]
+}

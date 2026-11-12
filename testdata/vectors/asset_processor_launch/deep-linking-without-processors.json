@@ -1,0 +1,21 @@
+{
+  "description": "A Deep Linking request that doesn't offer ltiAssetProcessor needs no activity, and sends none.",
+  "message_type": "LtiDeepLinkingRequest",
+  "message": {
+    "accept_types": [
+      "ltiResourceLink"
+    ],
+    "context": {
+      "id": "course-1",
+      "title": "Biology 1"
+    },
+    "roles": [
+      "http://purl.imsglobal.org/vocab/lis/v2/membership#Instructor"
+    ]
+  },
+  "valid": true,
+  "expect_claims": {},
+  "expect_absent": [
+    "https://purl.imsglobal.org/spec/lti/claim/activity"
+  ]
+}

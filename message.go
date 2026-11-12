@@ -7,7 +7,8 @@ import (
 )
 
 // Claim names from LTI 1.3 §5, LTI Deep Linking 2.0 §4, Names and Role Provisioning Services 2.0
-// §3.6.1.1, Assignment and Grade Services 2.0 §3.1 and the LTI Platform Notification Service.
+// §3.6.1.1, Assignment and Grade Services 2.0 §3.1, the LTI Platform Notification Service and LTI
+// Asset Processor.
 const (
 	ClaimMessageType         = "https://purl.imsglobal.org/spec/lti/claim/message_type"
 	ClaimVersion             = "https://purl.imsglobal.org/spec/lti/claim/version"
@@ -32,10 +33,22 @@ const (
 	ClaimPlatformNotificationService = "https://purl.imsglobal.org/spec/lti/claim/platformnotificationservice"
 	// ClaimNotice is the notice a notice JWT carries.
 	ClaimNotice = "https://purl.imsglobal.org/spec/lti/claim/notice"
+	// The LTI Asset Processor claims: the Content Item and Settings, the Submission Notice, the
+	// Asset and Asset Report services, Report Review and the EULA message and service. for_user is
+	// the claim LTI Submission Review defines.
+	ClaimActivity        = "https://purl.imsglobal.org/spec/lti/claim/activity"
+	ClaimForUser         = "https://purl.imsglobal.org/spec/lti/claim/for_user"
+	ClaimSubmission      = "https://purl.imsglobal.org/spec/lti/claim/submission"
+	ClaimAsset           = "https://purl.imsglobal.org/spec/lti/claim/asset"
+	ClaimAssetReportType = "https://purl.imsglobal.org/spec/lti/claim/assetreport_type"
+	ClaimAssetService    = "https://purl.imsglobal.org/spec/lti/claim/assetservice"
+	ClaimAssetReport     = "https://purl.imsglobal.org/spec/lti/claim/assetreport"
+	ClaimEulaService     = "https://purl.imsglobal.org/spec/lti/claim/eulaservice"
 )
 
-// Message is a message the platform launches a tool with: *ResourceLinkRequest or
-// *DeepLinkingRequest. Other packages can't implement it.
+// Message is a message the platform launches a tool with: *ResourceLinkRequest,
+// *DeepLinkingRequest, *AssetProcessorSettingsRequest, *ReportReviewRequest or *EulaRequest. Other
+// packages can't implement it.
 type Message interface {
 	MessageType() MessageType
 	isMessage()
@@ -58,6 +71,11 @@ type DeepLinkingRequest struct {
 	Common
 
 	Settings DeepLinkingSettings
+	// Activity is the activity the tool attaches asset processors to. A request that offers
+	// ltiAssetProcessor in Settings.AcceptTypes needs it, and should also carry
+	// PlatformNotificationService, since the tool registers its submission notice handler before it
+	// returns the item.
+	Activity *Activity
 }
 
 // MessageType returns LtiDeepLinkingRequest.
@@ -205,8 +223,10 @@ type DeepLinkingResponse struct {
 	ErrorLog     string
 }
 
-// ContentItem is one item in a Deep Linking response (LTI Deep Linking 2.0 §3).
-// Fields that don't apply to the item's type are empty.
+// ContentItem is one item in a Deep Linking response (LTI Deep Linking 2.0 §3, and the Asset
+// Processor Content Item for ltiAssetProcessor). Fields that don't apply to the item's type are
+// empty. An ltiAssetProcessor's URL is its settings launch's target link URI, empty for the tool's,
+// and its Custom, if it has any, goes with its settings launches and submission notices.
 type ContentItem struct {
 	Type      ContentItemType   `json:"type"`
 	Title     string            `json:"title,omitempty"`
@@ -225,6 +245,9 @@ type ContentItem struct {
 	Embed *Embed `json:"embed,omitempty"`
 	// LineItem is the line item an ltiResourceLink asks the platform to create, as the tool sent it.
 	LineItem json.RawMessage `json:"lineItem,omitempty"`
+	// Report is an ltiAssetProcessor's report member. Present, even empty, it says the tool means to
+	// post reports; nil, the platform may leave the assetreport claim out of its notices.
+	Report *ContentItemReport `json:"report,omitempty"`
 	// Raw is the whole item as the tool sent it, for properties this struct doesn't model. Nothing in
 	// it beyond the fields above was checked: never take URLs or markup from it.
 	Raw json.RawMessage `json:"-"`

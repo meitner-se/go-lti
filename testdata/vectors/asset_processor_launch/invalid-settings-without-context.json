@@ -1,0 +1,13 @@
+{
+  "description": "A settings launch is for an activity in a context, so it needs the context claim.",
+  "message_type": "LtiAssetProcessorSettingsRequest",
+  "message": {
+    "roles": [
+      "http://purl.imsglobal.org/vocab/lis/v2/membership#Instructor"
+    ],
+    "activity": {
+      "id": "activity-1"
+    }
+  },
+  "valid": false
+}

@@ -167,7 +167,8 @@ type Launch struct {
 	Tool Tool
 	// Initiation is the login initiation the platform sent for this launch.
 	Initiation LoginInitiation
-	// Message is a *lti.ResourceLinkRequest or a *lti.DeepLinkingRequest.
+	// Message is a *lti.ResourceLinkRequest, *lti.DeepLinkingRequest,
+	// *lti.AssetProcessorSettingsRequest, *lti.ReportReviewRequest or *lti.EulaRequest.
 	Message lti.Message
 }
 
@@ -231,17 +232,9 @@ func (l *Launcher) Respond(ctx context.Context, req *AuthenticationRequest, laun
 // checkMatchesInitiation checks that msg launches what li started: the same deployment and the same
 // target link URI, each defaulting to the tool's as they do in the URL and the claims.
 func checkMatchesInitiation(tool Tool, li LoginInitiation, msg lti.Message) error {
-	var common lti.Common
-
-	switch m := msg.(type) {
-	case *lti.ResourceLinkRequest:
-		if m != nil {
-			common = m.Common
-		}
-	case *lti.DeepLinkingRequest:
-		if m != nil {
-			common = m.Common
-		}
+	common, err := messageCommon(msg)
+	if err != nil {
+		return err
 	}
 
 	sentTarget, messageTarget := li.TargetLinkURI, common.TargetLinkURI

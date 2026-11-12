@@ -2,8 +2,8 @@
 // launched with, verifying Deep Linking responses, Dynamic Registration and its client
 // configuration endpoint, the OpenID configuration,
 // the Names and Role Provisioning Services memberships endpoint, the Assignment and Grade Services
-// line item, score and result endpoints, and the LTI Platform Notification Service's notice handler
-// endpoint and signed notices.
+// line item, score and result endpoints, the LTI Platform Notification Service's notice handler
+// endpoint and signed notices, and the LTI Asset Processor launches and submission notice.
 package platform
 
 import (
@@ -34,6 +34,13 @@ var reservedClaims = map[string]bool{
 	lti.ClaimResourceLink: true, lti.ClaimLaunchPresentation: true, lti.ClaimToolPlatform: true,
 	lti.ClaimCustom: true, lti.ClaimDeepLinkingSettings: true, lti.ClaimNamesRoleService: true,
 	lti.ClaimAGSEndpoint: true, lti.ClaimPlatformNotificationService: true, lti.ClaimNotice: true,
+}
+
+// launchClaims are the Asset Processor claims a launch message sets, which an extension can't set
+// either. A notice's Claims may carry them, since AssetProcessorSubmission builds them that way.
+var launchClaims = map[string]bool{
+	lti.ClaimActivity: true, lti.ClaimForUser: true, lti.ClaimSubmission: true, lti.ClaimAsset: true,
+	lti.ClaimAssetReportType: true, lti.ClaimEulaService: true,
 }
 
 // namesRoleServiceVersion is the Names and Role Provisioning Services version a launch offers.
@@ -137,29 +144,22 @@ func (l *Launcher) idTokenClaims(tool Tool, nonce string, msg lti.Message, now t
 
 	claims := map[string]any{}
 
-	var (
-		common lti.Common
-		link   *lti.ResourceLink
-	)
+	common, err := messageCommon(msg)
+	if err != nil {
+		return nil, err
+	}
+
+	var link *lti.ResourceLink
 
 	switch m := msg.(type) {
 	case *lti.ResourceLinkRequest:
-		if m == nil {
-			return nil, errors.New("lti: launch needs a message")
-		}
-
 		if m.ResourceLink.ID == "" || len(m.ResourceLink.ID) > maxIdentifierLength {
 			return nil, errors.New("lti: resource link launch needs a resource link id of at most 255 characters")
 		}
 
-		common = m.Common
 		link = &m.ResourceLink
 		claims[lti.ClaimResourceLink] = m.ResourceLink
 	case *lti.DeepLinkingRequest:
-		if m == nil {
-			return nil, errors.New("lti: launch needs a message")
-		}
-
 		settings, err := deepLinkingSettingsClaim(m.Settings, l.config.Endpoints().DeepLinkReturn)
 		if err != nil {
 			return nil, err
@@ -170,10 +170,21 @@ func (l *Launcher) idTokenClaims(tool Tool, nonce string, msg lti.Message, now t
 			return nil, errors.New("lti: deep linking request can't carry an ags lineitem url")
 		}
 
-		common = m.Common
+		if err := deepLinkingActivityClaim(m, claims); err != nil {
+			return nil, err
+		}
+
 		claims[lti.ClaimDeepLinkingSettings] = settings
-	default:
-		return nil, errors.New("lti: launch message must be a *ResourceLinkRequest or a *DeepLinkingRequest")
+	case *lti.AssetProcessorSettingsRequest:
+		err = assetProcessorSettingsClaims(m, claims)
+	case *lti.ReportReviewRequest:
+		err = reportReviewClaims(m, claims)
+	case *lti.EulaRequest:
+		err = eulaClaims(m, claims)
+	}
+
+	if err != nil {
+		return nil, err
 	}
 
 	targetLinkURI := common.TargetLinkURI
@@ -247,7 +258,7 @@ func (l *Launcher) idTokenClaims(tool Tool, nonce string, msg lti.Message, now t
 		}
 
 		name := extension.ClaimName()
-		if !strings.Contains(name, "://") || reservedClaims[name] {
+		if !strings.Contains(name, "://") || reservedClaims[name] || launchClaims[name] {
 			return nil, fmt.Errorf("lti: extension claim %q must be a fully qualified url that the package doesn't set", name)
 		}
 
@@ -259,6 +270,44 @@ func (l *Launcher) idTokenClaims(tool Tool, nonce string, msg lti.Message, now t
 	}
 
 	return claims, nil
+}
+
+// messageCommon returns what msg says in common with every launch. A nil message of a known type
+// and a message of another type are errors.
+func messageCommon(msg lti.Message) (lti.Common, error) {
+	var common *lti.Common
+
+	switch m := msg.(type) {
+	case *lti.ResourceLinkRequest:
+		if m != nil {
+			common = &m.Common
+		}
+	case *lti.DeepLinkingRequest:
+		if m != nil {
+			common = &m.Common
+		}
+	case *lti.AssetProcessorSettingsRequest:
+		if m != nil {
+			common = &m.Common
+		}
+	case *lti.ReportReviewRequest:
+		if m != nil {
+			common = &m.Common
+		}
+	case *lti.EulaRequest:
+		if m != nil {
+			common = &m.Common
+		}
+	default:
+		return lti.Common{}, errors.New("lti: launch message must be a *ResourceLinkRequest, *DeepLinkingRequest, " +
+			"*AssetProcessorSettingsRequest, *ReportReviewRequest or *EulaRequest")
+	}
+
+	if common == nil {
+		return lti.Common{}, errors.New("lti: launch needs a message")
+	}
+
+	return *common, nil
 }
 
 // LaunchVariables returns the substitution variables a launch supports, for Config.Variables. Each

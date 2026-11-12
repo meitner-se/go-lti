@@ -80,6 +80,8 @@ func FuzzContentItems(f *testing.F) {
 	f.Add([]byte(`[{"type":"link","url":"https://a.example/","iframe":{"width":1.5}}]`))
 	f.Add([]byte(`[{"type":"link","url":"httPs://A"}]`))
 	f.Add([]byte(`[{"type":"link","url":"https://a.example.com/","iframe":{"src":"javascript:alert(1)","ſrc":"https://a.example.com/e"}}]`))
+	f.Add([]byte(`[{"type":"ltiAssetProcessor","custom":{"a":""},"report":{"url":"https://tool.example.com/r","custom":{}}}]`))
+	f.Add([]byte(`[{"type":"ltiAssetProcessor","custom":{},"report":{"url":"http://a.example/","URL":"https://tool.example.com/"}}]`))
 
 	settings := lti.DeepLinkingSettings{AcceptTypes: allContentItemTypes, AcceptMultiple: true}
 
@@ -123,7 +125,7 @@ func FuzzContentItems(f *testing.F) {
 	})
 }
 
-// rawURLs returns the url, icon.url, thumbnail.url and iframe.src members of a raw item.
+// rawURLs returns the url, icon.url, thumbnail.url, iframe.src and report.url members of a raw item.
 func rawURLs(item map[string]any) []string {
 	var urls []string
 
@@ -140,6 +142,12 @@ func rawURLs(item map[string]any) []string {
 
 	if iframe, ok := item["iframe"].(map[string]any); ok {
 		if u, ok := iframe["src"].(string); ok && u != "" {
+			urls = append(urls, u)
+		}
+	}
+
+	if report, ok := item["report"].(map[string]any); ok {
+		if u, ok := report["url"].(string); ok && u != "" {
 			urls = append(urls, u)
 		}
 	}

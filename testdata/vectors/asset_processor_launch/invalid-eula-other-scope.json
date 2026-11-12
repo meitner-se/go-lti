@@ -1,0 +1,20 @@
+{
+  "description": "The EULA service lists only the two EULA scopes.",
+  "message_type": "LtiEulaRequest",
+  "message": {
+    "context": {
+      "id": "course-1",
+      "title": "Biology 1"
+    },
+    "roles": [
+      "http://purl.imsglobal.org/vocab/lis/v2/membership#Learner"
+    ],
+    "eulaservice": {
+      "url": "https://platform.example.com/lti/eula/deployment-1",
+      "scope": [
+        "https://purl.imsglobal.org/spec/lti/scope/eula"
+      ]
+    }
+  },
+  "valid": false
+}

@@ -1,0 +1,18 @@
+{
+  "description": "A Deep Linking request that offers ltiAssetProcessor must carry the activity claim.",
+  "message_type": "LtiDeepLinkingRequest",
+  "message": {
+    "accept_types": [
+      "ltiResourceLink",
+      "ltiAssetProcessor"
+    ],
+    "context": {
+      "id": "course-1",
+      "title": "Biology 1"
+    },
+    "roles": [
+      "http://purl.imsglobal.org/vocab/lis/v2/membership#Instructor"
+    ]
+  },
+  "valid": false
+}

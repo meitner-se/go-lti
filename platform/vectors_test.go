@@ -665,3 +665,176 @@ func TestLauncher_SignNotice_Vectors(t *testing.T) {
 		})
 	}
 }
+
+//nolint:tagliatelle // the vector files are shared with other languages and use snake_case
+type assetProcessorLaunchVector struct {
+	Description string          `json:"description"`
+	MessageType lti.MessageType `json:"message_type"`
+	Message     struct {
+		AcceptTypes           []lti.ContentItemType `json:"accept_types"`
+		Context               *lti.LaunchContext    `json:"context"`
+		Roles                 []lti.Role            `json:"roles"`
+		Sharing               lti.Sharing           `json:"sharing"`
+		Custom                map[string]string     `json:"custom"`
+		ContextMembershipsURL string                `json:"context_memberships_url"`
+		Activity              *lti.Activity         `json:"activity"`
+		ForUser               lti.ForUser           `json:"for_user"`
+		Submission            lti.AssetSubmission   `json:"submission"`
+		Asset                 lti.ReviewedAsset     `json:"asset"`
+		AssetReportType       lti.AssetReportType   `json:"assetreport_type"`
+		EulaService           lti.EulaService       `json:"eulaservice"`
+	} `json:"message"`
+	Valid        bool                       `json:"valid"`
+	ExpectClaims map[string]json.RawMessage `json:"expect_claims"`
+	ExpectAbsent []string                   `json:"expect_absent"`
+}
+
+func (v assetProcessorLaunchVector) message(t *testing.T) lti.Message {
+	t.Helper()
+
+	m := v.Message
+	common := lti.Common{
+		DeploymentID:          "deployment-1",
+		Subject:               "3f2a8c1e-7d4b-4e8f-9a6c-1b2d3e4f5a6b",
+		Roles:                 m.Roles,
+		Context:               m.Context,
+		Sharing:               lti.Sharing{Name: m.Sharing.Name, Email: m.Sharing.Email},
+		Custom:                m.Custom,
+		ContextMembershipsURL: m.ContextMembershipsURL,
+	}
+
+	switch v.MessageType {
+	case lti.MessageTypeDeepLinkingRequest:
+		settings := createTestDeepLinkingSettings()
+		settings.AcceptTypes = m.AcceptTypes
+
+		return &lti.DeepLinkingRequest{Common: common, Settings: settings, Activity: m.Activity}
+	case lti.MessageTypeAssetProcessorSettingsRequest:
+		return &lti.AssetProcessorSettingsRequest{Common: common, Activity: derefActivity(m.Activity)}
+	case lti.MessageTypeReportReviewRequest:
+		return &lti.ReportReviewRequest{
+			Common:          common,
+			Activity:        derefActivity(m.Activity),
+			ForUser:         m.ForUser,
+			Submission:      m.Submission,
+			Asset:           m.Asset,
+			AssetReportType: m.AssetReportType,
+		}
+	case lti.MessageTypeEulaRequest:
+		return &lti.EulaRequest{Common: common, EulaService: m.EulaService}
+	default:
+		t.Fatalf("unknown message_type %q", v.MessageType)
+
+		return nil
+	}
+}
+
+func derefActivity(a *lti.Activity) lti.Activity {
+	if a == nil {
+		return lti.Activity{}
+	}
+
+	return *a
+}
+
+func TestLauncher_AssetProcessorLaunch_Vectors(t *testing.T) {
+	t.Parallel()
+
+	launcher := createTestLauncher(t, ltitest.NewSigningKey(t))
+
+	for name, v := range loadVectors[assetProcessorLaunchVector](t, "asset_processor_launch") {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			claims, err := launcher.idTokenClaims(createTestTool(), "nonce-1", v.message(t), testNow)
+			if !v.Valid {
+				require.Error(t, err, v.Description)
+
+				return
+			}
+
+			require.NoError(t, err, v.Description)
+
+			for claim, expect := range v.ExpectClaims {
+				require.Contains(t, claims, claim, v.Description)
+				assert.JSONEq(t, string(expect), string(mustJSON(t, claims[claim])), "%s: %s", v.Description, claim)
+			}
+
+			for _, claim := range v.ExpectAbsent {
+				assert.NotContains(t, claims, claim, v.Description)
+			}
+		})
+	}
+}
+
+//nolint:tagliatelle // the vector files are shared with other languages and use snake_case
+type assetProcessorSubmissionVector struct {
+	Description string `json:"description"`
+	Submission  struct {
+		DeploymentID string              `json:"deployment_id"`
+		ID           string              `json:"id"`
+		Timestamp    time.Time           `json:"timestamp"`
+		Subject      string              `json:"sub"`
+		Roles        []lti.Role          `json:"roles"`
+		Context      lti.LaunchContext   `json:"context"`
+		ForUser      lti.ForUser         `json:"for_user"`
+		Activity     lti.Activity        `json:"activity"`
+		Submission   lti.AssetSubmission `json:"submission"`
+		Assets       []lti.Asset         `json:"assets"`
+		ReportURL    string              `json:"report_url"`
+		Custom       map[string]string   `json:"custom"`
+	} `json:"submission"`
+	Valid        bool           `json:"valid"`
+	ExpectClaims map[string]any `json:"expect_claims"`
+}
+
+func TestAssetProcessorSubmission_Vectors(t *testing.T) {
+	t.Parallel()
+
+	launcher := createTestLauncher(t, ltitest.NewSigningKey(t))
+
+	for name, v := range loadVectors[assetProcessorSubmissionVector](t, "asset_processor_submission") {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			s := v.Submission
+			submission := AssetProcessorSubmission{
+				DeploymentID: s.DeploymentID,
+				ID:           s.ID,
+				Timestamp:    s.Timestamp,
+				Subject:      s.Subject,
+				Roles:        s.Roles,
+				Context:      s.Context,
+				ForUser:      s.ForUser,
+				Activity:     s.Activity,
+				Submission:   s.Submission,
+				AssetService: lti.AssetService{Assets: s.Assets},
+				Custom:       s.Custom,
+			}
+
+			if s.ReportURL != "" {
+				submission.AssetReport = &lti.AssetReport{ReportURL: s.ReportURL}
+			}
+
+			notice, err := submission.Notice()
+			if err == nil {
+				var claims map[string]any
+
+				claims, err = launcher.noticeClaims(createTestTool(), notice, "nonce-1", testNow)
+				if err == nil {
+					require.True(t, v.Valid, v.Description)
+
+					delete(claims, "iat")
+					delete(claims, "exp")
+					delete(claims, "nonce")
+
+					assert.JSONEq(t, string(mustJSON(t, v.ExpectClaims)), claimsJSON(t, claims), v.Description)
+
+					return
+				}
+			}
+
+			require.False(t, v.Valid, "%s: %v", v.Description, err)
+		})
+	}
+}

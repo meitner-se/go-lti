@@ -281,6 +281,10 @@ func validateRequired(item lti.ContentItem, raw json.RawMessage) error {
 		if err := validateResourceLink(raw); err != nil {
 			return err
 		}
+	case lti.ContentItemTypeLTIAssetProcessor:
+		if err := validateAssetProcessor(raw); err != nil {
+			return err
+		}
 	}
 
 	if item.Type == lti.ContentItemTypeLink {
@@ -329,6 +333,37 @@ func validateResourceLink(raw json.RawMessage) error {
 	return nil
 }
 
+// validateAssetProcessor checks an ltiAssetProcessor's custom parameters and its report's (Asset
+// Processor Content Item). Both are optional, and a missing or null object is no parameters, but
+// every value is a string, possibly empty, and never null.
+func validateAssetProcessor(raw json.RawMessage) error {
+	var probe struct {
+		Custom map[string]*string `json:"custom"`
+		Report *struct {
+			Custom map[string]*string `json:"custom"`
+		} `json:"report"`
+	}
+
+	if err := json.Unmarshal(raw, &probe); err != nil {
+		return reject("deep linking response has a malformed ltiAssetProcessor", err)
+	}
+
+	custom := []map[string]*string{probe.Custom}
+	if probe.Report != nil {
+		custom = append(custom, probe.Report.Custom)
+	}
+
+	for _, params := range custom {
+		for _, value := range params {
+			if value == nil {
+				return reject("deep linking response has a custom parameter that is null, not a string", nil)
+			}
+		}
+	}
+
+	return nil
+}
+
 // itemURLs returns every URL in the item that the platform would load or send the user to.
 func itemURLs(item lti.ContentItem) []string {
 	var urls []string
@@ -349,11 +384,15 @@ func itemURLs(item lti.ContentItem) []string {
 		urls = append(urls, item.Iframe.Src)
 	}
 
+	if item.Report != nil && item.Report.URL != "" {
+		urls = append(urls, item.Report.URL)
+	}
+
 	return urls
 }
 
 // checkKeys refuses a JSON value with an object that repeats a key, or, in the objects Go decodes
-// into structs (the item and its icon, thumbnail, window, iframe and embed), a key that differs
+// into structs (the item and its icon, thumbnail, window, iframe, embed and report), a key that differs
 // only in case from another key or from a field the struct models. Go matches keys by Unicode case
 // folding, so either would let Raw disagree with what was checked.
 func checkKeys(raw json.RawMessage) error {
@@ -364,13 +403,14 @@ func checkKeys(raw json.RawMessage) error {
 
 // Fields of the structs a content item decodes into, by the member that holds them.
 var (
-	itemFields   = fieldSet("type", "title", "text", "url", "icon", "thumbnail", "window", "iframe", "custom", "mediaType", "html", "embed", "lineItem")
+	itemFields   = fieldSet("type", "title", "text", "url", "icon", "thumbnail", "window", "iframe", "custom", "mediaType", "html", "embed", "lineItem", "report")
 	memberFields = map[string]map[string]string{
 		"icon":      fieldSet("url", "width", "height"),
 		"thumbnail": fieldSet("url", "width", "height"),
 		"window":    fieldSet("targetName", "width", "height", "windowFeatures"),
 		"iframe":    fieldSet("src", "width", "height"),
 		"embed":     fieldSet("html"),
+		"report":    fieldSet("url", "custom"),
 	}
 )
 

@@ -1,0 +1,14 @@
+{
+  "description": "A EULA launch needs the EULA service claim.",
+  "message_type": "LtiEulaRequest",
+  "message": {
+    "context": {
+      "id": "course-1",
+      "title": "Biology 1"
+    },
+    "roles": [
+      "http://purl.imsglobal.org/vocab/lis/v2/membership#Learner"
+    ]
+  },
+  "valid": false
+}

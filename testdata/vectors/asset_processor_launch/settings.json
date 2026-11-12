@@ -1,0 +1,39 @@
+{
+  "description": "A settings launch carries the activity and its context, and no resource link.",
+  "message_type": "LtiAssetProcessorSettingsRequest",
+  "message": {
+    "context": {
+      "id": "course-1",
+      "title": "Biology 1"
+    },
+    "roles": [
+      "http://purl.imsglobal.org/vocab/lis/v2/membership#Instructor"
+    ],
+    "activity": {
+      "id": "activity-1"
+    },
+    "custom": {
+      "processor_id": "proc-7"
+    }
+  },
+  "valid": true,
+  "expect_claims": {
+    "https://purl.imsglobal.org/spec/lti/claim/message_type": "LtiAssetProcessorSettingsRequest",
+    "https://purl.imsglobal.org/spec/lti/claim/activity": {
+      "id": "activity-1"
+    },
+    "https://purl.imsglobal.org/spec/lti/claim/context": {
+      "id": "course-1",
+      "title": "Biology 1"
+    },
+    "https://purl.imsglobal.org/spec/lti/claim/roles": [
+      "http://purl.imsglobal.org/vocab/lis/v2/membership#Instructor"
+    ],
+    "https://purl.imsglobal.org/spec/lti/claim/custom": {
+      "processor_id": "proc-7"
+    }
+  },
+  "expect_absent": [
+    "https://purl.imsglobal.org/spec/lti/claim/resource_link"
+  ]
+}
