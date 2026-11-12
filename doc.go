@@ -14,13 +14,16 @@
 // Activity, ForUser, AssetSubmission, ReviewedAsset, AssetReportType, AssetService, AssetReport and
 // EulaService are the claims of LTI Asset Processor. AssetProcessorSettingsRequest,
 // ReportReviewRequest and EulaRequest are its launches, and ContentItemTypeLTIAssetProcessor its
-// Deep Linking item, whose ContentItem.Report says where report reviews go.
+// Deep Linking item, whose ContentItem.Report says where report reviews go. Report is what a tool
+// posts to the Asset Report Service, read leniently, and EulaAcceptance and EulaDeployment are the
+// bodies of the EULA service.
 //
 // The platform side (its configuration, its record of each tool, launches, Deep Linking
 // verification, Dynamic Registration and its client configuration endpoint, the OpenID
 // configuration, the Names and Role Provisioning
 // Services endpoint, the Assignment and Grade Services endpoints, and the Platform Notification
-// Service endpoint and notices, and the Asset Processor submission notice) lives in package platform.
+// Service endpoint and notices, and the Asset Processor submission notice and its Asset, Asset Report
+// and EULA services) lives in package platform.
 // Package jwks publishes and fetches keys, safehttp fetches tool-controlled URLs safely, and
 // ltitest has test doubles.
 //

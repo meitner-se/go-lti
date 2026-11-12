@@ -1,0 +1,30 @@
+{
+  "description": "A member named after the tool's domain is kept as it is.",
+  "scopes": [
+    "https://purl.imsglobal.org/spec/lti/scope/report"
+  ],
+  "processor_id": "processor-1",
+  "body": {
+    "assetId": "asset-1",
+    "type": "originality",
+    "timestamp": "2026-11-10T12:00:00.123456Z",
+    "priority": 1,
+    "processingProgress": "Processed",
+    "https://tool.example.com/similarity": {
+      "sources": 2,
+      "words": 140
+    }
+  },
+  "expect_status": 200,
+  "expect_report": {
+    "assetId": "asset-1",
+    "type": "originality",
+    "timestamp": "2026-11-10T12:00:00.123456Z",
+    "priority": 1,
+    "processingProgress": "Processed",
+    "https://tool.example.com/similarity": {
+      "sources": 2,
+      "words": 140
+    }
+  }
+}

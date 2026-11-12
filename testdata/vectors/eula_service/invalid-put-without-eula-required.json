@@ -1,0 +1,13 @@
+{
+  "description": "The deployment setting needs eulaRequired.",
+  "scopes": [
+    "https://purl.imsglobal.org/spec/lti/scope/eula/deployment"
+  ],
+  "method": "PUT",
+  "deployment_id": "deployment-1",
+  "endpoint": "deployment",
+  "body": {},
+  "expect_status": 400,
+  "error_code": "invalid_request",
+  "error_description": "the eula deployment setting's eulaRequired is missing"
+}

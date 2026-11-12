@@ -1,0 +1,16 @@
+{
+  "description": "A token without the report scope is refused.",
+  "scopes": [
+    "https://purl.imsglobal.org/spec/lti/scope/asset.readonly"
+  ],
+  "processor_id": "processor-1",
+  "body": {
+    "assetId": "asset-1",
+    "type": "originality",
+    "timestamp": "2026-11-10T12:00:00.123456Z",
+    "priority": 1,
+    "processingProgress": "Processed"
+  },
+  "expect_status": 403,
+  "error_code": "insufficient_scope"
+}

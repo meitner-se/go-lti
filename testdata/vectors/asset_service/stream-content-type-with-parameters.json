@@ -1,0 +1,15 @@
+{
+  "description": "A content type with parameters is answered as it is.",
+  "scopes": [
+    "https://purl.imsglobal.org/spec/lti/scope/asset.readonly"
+  ],
+  "asset_id": "asset-1",
+  "asset": {
+    "content_type": "text/plain; charset=utf-8",
+    "content": "An essay.",
+    "redirect_url": null
+  },
+  "expect_status": 200,
+  "expect_content_type": "text/plain; charset=utf-8",
+  "expect_body": "An essay."
+}

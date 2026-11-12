@@ -1,0 +1,19 @@
+{
+  "description": "A PUT can require the EULA again.",
+  "scopes": [
+    "https://purl.imsglobal.org/spec/lti/scope/eula/deployment"
+  ],
+  "method": "PUT",
+  "deployment_id": "deployment-1",
+  "endpoint": "deployment",
+  "body": {
+    "eulaRequired": true
+  },
+  "expect_status": 200,
+  "expect_body": {
+    "eulaRequired": true
+  },
+  "expect_hook": {
+    "set_eula_required": true
+  }
+}

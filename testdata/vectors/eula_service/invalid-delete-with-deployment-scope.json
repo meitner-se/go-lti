@@ -1,0 +1,11 @@
+{
+  "description": "Clearing acceptances needs the eula/user scope.",
+  "scopes": [
+    "https://purl.imsglobal.org/spec/lti/scope/eula/deployment"
+  ],
+  "method": "DELETE",
+  "deployment_id": "deployment-1",
+  "endpoint": "user",
+  "expect_status": 403,
+  "error_code": "insufficient_scope"
+}

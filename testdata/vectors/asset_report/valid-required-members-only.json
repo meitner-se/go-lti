@@ -1,0 +1,22 @@
+{
+  "description": "A report with only its required members.",
+  "scopes": [
+    "https://purl.imsglobal.org/spec/lti/scope/report"
+  ],
+  "processor_id": "processor-1",
+  "body": {
+    "assetId": "asset-1",
+    "type": "originality",
+    "timestamp": "2026-11-10T12:00:00.123456Z",
+    "priority": 1,
+    "processingProgress": "Processed"
+  },
+  "expect_status": 200,
+  "expect_report": {
+    "assetId": "asset-1",
+    "type": "originality",
+    "timestamp": "2026-11-10T12:00:00.123456Z",
+    "priority": 1,
+    "processingProgress": "Processed"
+  }
+}

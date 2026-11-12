@@ -48,8 +48,10 @@ type SupportedMessage struct {
 }
 
 // OpenIDConfiguration returns the platform's OpenID configuration document. Its scopes_supported
-// are openid and Config.Scopes, plus lti.ScopeRegistrationReadOnly and lti.ScopeRegistration when
-// Paths.RegistrationClient is set. Its messages_supported are LtiResourceLinkRequest and
+// are openid and Config.Scopes, plus the scopes of each service whose path is set:
+// lti.ScopeRegistrationReadOnly and lti.ScopeRegistration for Paths.RegistrationClient,
+// lti.ScopeAssetReadOnly for Paths.Assets, lti.ScopeReport for Paths.AssetReports, and
+// lti.ScopeEulaUser and lti.ScopeEulaDeployment for Paths.Eula. Its messages_supported are LtiResourceLinkRequest and
 // LtiDeepLinkingRequest, plus, when Config.AssetProcessor is set, the ActivityAssetProcessor
 // placement on LtiDeepLinkingRequest and the three Asset Processor messages. It fails when the
 // config is invalid, or lacks what Dynamic Registration requires: a token endpoint, and the
@@ -70,8 +72,8 @@ func (c Config) OpenIDConfiguration() (OpenIDConfiguration, error) {
 
 	endpoints := c.Endpoints()
 
-	// LTI Dynamic Registration 1.0 §4.2: a platform that serves the client configuration endpoint
-	// lists its two scopes.
+	// A platform lists the scopes of the services it serves: the client configuration endpoint's
+	// (LTI Dynamic Registration 1.0 §4.2) and the Asset Processor services'.
 	scopes := []string{"openid"}
 	for _, scope := range c.scopesSupported() {
 		scopes = append(scopes, string(scope))

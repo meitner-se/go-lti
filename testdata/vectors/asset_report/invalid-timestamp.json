@@ -1,0 +1,17 @@
+{
+  "description": "A timestamp must be an ISO 8601 date and time.",
+  "scopes": [
+    "https://purl.imsglobal.org/spec/lti/scope/report"
+  ],
+  "processor_id": "processor-1",
+  "body": {
+    "assetId": "asset-1",
+    "type": "originality",
+    "timestamp": "10 November 2026",
+    "priority": 1,
+    "processingProgress": "Processed"
+  },
+  "expect_status": 400,
+  "error_code": "invalid_request",
+  "error_description": "the report's timestamp is not valid"
+}

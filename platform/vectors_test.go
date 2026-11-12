@@ -3,11 +3,13 @@ package platform
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"io/fs"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -835,6 +837,193 @@ func TestAssetProcessorSubmission_Vectors(t *testing.T) {
 			}
 
 			require.False(t, v.Valid, "%s: %v", v.Description, err)
+		})
+	}
+}
+
+//nolint:tagliatelle // the vector files are shared with other languages and use snake_case
+type assetServiceVector struct {
+	Description string      `json:"description"`
+	Scopes      []lti.Scope `json:"scopes"`
+	AssetID     string      `json:"asset_id"`
+	Asset       *struct {
+		ContentType string  `json:"content_type"`
+		Content     *string `json:"content"`
+		RedirectURL *string `json:"redirect_url"`
+	} `json:"asset"`
+	ExpectStatus      int           `json:"expect_status"`
+	ExpectContentType string        `json:"expect_content_type"`
+	ExpectBody        string        `json:"expect_body"`
+	ExpectLocation    string        `json:"expect_location"`
+	ErrorCode         lti.ErrorCode `json:"error_code"`
+}
+
+func TestNewHandler_AssetService_Vectors(t *testing.T) {
+	t.Parallel()
+
+	for name, v := range loadVectors[assetServiceVector](t, "asset_service") {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			s := newAssetProcessorServer()
+			s.tokens["token-vector"] = v.Scopes
+
+			handlers := s.handlers()
+			handlers.GetAsset = func(_ *http.Request, _ ServiceClient, assetID string) (AssetDownload, error) {
+				if v.Asset == nil || assetID != v.AssetID {
+					return AssetDownload{}, ErrAssetNotFound
+				}
+
+				if v.Asset.RedirectURL != nil {
+					return AssetDownload{Body: nil, ContentType: v.Asset.ContentType, Size: 0, RedirectURL: *v.Asset.RedirectURL}, nil
+				}
+
+				return AssetDownload{Body: io.NopCloser(strings.NewReader(*v.Asset.Content)), ContentType: v.Asset.ContentType, Size: 0, RedirectURL: ""}, nil
+			}
+
+			cfg := createAssetProcessorTestConfig()
+
+			handler, err := NewHandler(cfg, handlers)
+			require.NoError(t, err)
+
+			target, err := cfg.AssetURL(v.AssetID)
+			require.NoError(t, err)
+
+			w := callAGS(t, handler, http.MethodGet, target, "token-vector", "")
+			require.Equal(t, v.ExpectStatus, w.Code, v.Description+": "+w.Body.String())
+
+			switch {
+			case v.ErrorCode != "":
+				requireAGSError(t, w, v.ExpectStatus, v.ErrorCode, "")
+			case v.ExpectLocation != "":
+				assert.Equal(t, v.ExpectLocation, w.Header().Get("Location"), v.Description)
+			default:
+				assert.Equal(t, v.ExpectContentType, w.Header().Get("Content-Type"), v.Description)
+				assert.Equal(t, v.ExpectBody, w.Body.String(), v.Description)
+			}
+		})
+	}
+}
+
+//nolint:tagliatelle // the vector files are shared with other languages and use snake_case
+type assetReportVector struct {
+	Description      string          `json:"description"`
+	Scopes           []lti.Scope     `json:"scopes"`
+	ProcessorID      string          `json:"processor_id"`
+	Body             json.RawMessage `json:"body"`
+	ExpectStatus     int             `json:"expect_status"`
+	ExpectReport     json.RawMessage `json:"expect_report"`
+	ErrorCode        lti.ErrorCode   `json:"error_code"`
+	ErrorDescription string          `json:"error_description"`
+}
+
+func TestNewHandler_AssetReport_Vectors(t *testing.T) {
+	t.Parallel()
+
+	for name, v := range loadVectors[assetReportVector](t, "asset_report") {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			s := newAssetProcessorServer()
+			s.tokens["token-vector"] = v.Scopes
+
+			cfg := createAssetProcessorTestConfig()
+
+			handler, err := NewHandler(cfg, s.handlers())
+			require.NoError(t, err)
+
+			target, err := cfg.AssetReportURL(v.ProcessorID)
+			require.NoError(t, err)
+
+			w := callAGS(t, handler, http.MethodPost, target, "token-vector", string(v.Body))
+			require.Equal(t, v.ExpectStatus, w.Code, v.Description+": "+w.Body.String())
+
+			if v.ErrorCode != "" {
+				requireAGSError(t, w, v.ExpectStatus, v.ErrorCode, v.ErrorDescription)
+				assert.Empty(t, s.reports, v.Description)
+
+				return
+			}
+
+			// The answer is the report the tool sent; the hook gets it as the platform reads it.
+			assert.JSONEq(t, string(v.Body), w.Body.String(), v.Description)
+			require.Len(t, s.reports, 1, v.Description)
+
+			got, err := json.Marshal(s.reports[0])
+			require.NoError(t, err)
+			assert.JSONEq(t, string(v.ExpectReport), string(got), v.Description)
+		})
+	}
+}
+
+//nolint:tagliatelle // the vector files are shared with other languages and use snake_case
+type eulaServiceVector struct {
+	Description      string          `json:"description"`
+	Scopes           []lti.Scope     `json:"scopes"`
+	Method           string          `json:"method"`
+	DeploymentID     string          `json:"deployment_id"`
+	Endpoint         string          `json:"endpoint"`
+	Body             json.RawMessage `json:"body"`
+	ExpectStatus     int             `json:"expect_status"`
+	ExpectBody       json.RawMessage `json:"expect_body"`
+	ExpectHook       json.RawMessage `json:"expect_hook"`
+	ErrorCode        lti.ErrorCode   `json:"error_code"`
+	ErrorDescription string          `json:"error_description"`
+}
+
+func TestNewHandler_EulaService_Vectors(t *testing.T) {
+	t.Parallel()
+
+	for name, v := range loadVectors[eulaServiceVector](t, "eula_service") {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			s := newAssetProcessorServer()
+			s.tokens["token-vector"] = v.Scopes
+
+			cfg := createAssetProcessorTestConfig()
+
+			handler, err := NewHandler(cfg, s.handlers())
+			require.NoError(t, err)
+
+			service, err := cfg.EulaServiceURL(v.DeploymentID)
+			require.NoError(t, err)
+
+			w := callAGS(t, handler, v.Method, service+"/"+v.Endpoint, "token-vector", string(v.Body))
+			require.Equal(t, v.ExpectStatus, w.Code, v.Description+": "+w.Body.String())
+
+			if v.ErrorCode != "" {
+				requireAGSError(t, w, v.ExpectStatus, v.ErrorCode, v.ErrorDescription)
+			}
+
+			if len(v.ExpectBody) > 0 {
+				assert.JSONEq(t, string(v.ExpectBody), w.Body.String(), v.Description)
+			}
+
+			// What the hooks got, in the vector's shape.
+			hooks := map[string]any{}
+			if len(s.acceptances) > 0 {
+				require.Len(t, s.acceptances, 1, v.Description)
+				hooks["record_acceptance"] = s.acceptances[0]
+			}
+
+			if len(s.cleared) > 0 {
+				hooks["clear_acceptances"] = true
+			}
+
+			if len(s.required) > 0 {
+				hooks["set_eula_required"] = s.required[0]
+			}
+
+			if len(v.ExpectHook) == 0 {
+				assert.Empty(t, hooks, v.Description)
+
+				return
+			}
+
+			got, err := json.Marshal(hooks)
+			require.NoError(t, err)
+			assert.JSONEq(t, string(v.ExpectHook), string(got), v.Description)
 		})
 	}
 }

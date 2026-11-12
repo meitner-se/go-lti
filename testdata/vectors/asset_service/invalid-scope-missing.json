@@ -1,0 +1,14 @@
+{
+  "description": "A token without the asset.readonly scope is refused.",
+  "scopes": [
+    "https://purl.imsglobal.org/spec/lti/scope/report"
+  ],
+  "asset_id": "asset-1",
+  "asset": {
+    "content_type": "application/pdf",
+    "content": "%PDF-1.7 an essay",
+    "redirect_url": null
+  },
+  "expect_status": 403,
+  "error_code": "insufficient_scope"
+}

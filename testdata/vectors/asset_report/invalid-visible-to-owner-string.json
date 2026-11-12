@@ -1,0 +1,18 @@
+{
+  "description": "visibleToOwner is a boolean.",
+  "scopes": [
+    "https://purl.imsglobal.org/spec/lti/scope/report"
+  ],
+  "processor_id": "processor-1",
+  "body": {
+    "assetId": "asset-1",
+    "type": "originality",
+    "timestamp": "2026-11-10T12:00:00.123456Z",
+    "priority": 1,
+    "processingProgress": "Processed",
+    "visibleToOwner": "true"
+  },
+  "expect_status": 400,
+  "error_code": "invalid_request",
+  "error_description": "the report's visibleToOwner is not valid"
+}

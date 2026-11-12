@@ -37,8 +37,8 @@ type Config struct {
 	NoticeTypes []lti.NoticeType
 	// AssetProcessor says the platform supports LTI Asset Processor: its OpenID configuration lists
 	// the ActivityAssetProcessor placement on Deep Linking and the LtiAssetProcessorSettingsRequest,
-	// LtiReportReviewRequest and LtiEulaRequest messages. List the Asset Processor scopes the
-	// platform offers in Scopes, and LtiAssetProcessorSubmissionNotice in NoticeTypes.
+	// LtiReportReviewRequest and LtiEulaRequest messages. List LtiAssetProcessorSubmissionNotice in
+	// NoticeTypes; Paths.Assets, Paths.AssetReports and Paths.Eula add the services' scopes.
 	AssetProcessor bool
 }
 
@@ -48,9 +48,9 @@ const PathOpenIDConfiguration = "/.well-known/openid-configuration"
 
 // Paths are where the platform's endpoints are under its issuer, such as "/register". Each starts
 // with "/" and is unique, and each is required except ContextMemberships, ContextLineItems,
-// NoticeHandlers and RegistrationClient; the first two may share a prefix. Tools learn the URLs from
-// the OpenID configuration, a Dynamic Registration or a launch, and keep them once registered, so
-// a path must not change after tools have registered.
+// NoticeHandlers, RegistrationClient, Assets, AssetReports and Eula; the first two may share a
+// prefix. Tools learn the URLs from the OpenID configuration, a Dynamic Registration or a launch,
+// and keep them once registered, so a path must not change after tools have registered.
 type Paths struct {
 	Authorization  string
 	JWKS           string
@@ -76,6 +76,20 @@ type Paths struct {
 	// the registration_client_uri of its registration response. Empty when the platform offers
 	// none.
 	RegistrationClient string
+	// Assets is the prefix of the Asset Service, such as "/assets": a tool downloads an asset at the
+	// prefix plus "/{asset}" (see Config.AssetURL), the URL of the asset in the assetservice claim.
+	// Empty when the platform offers none.
+	Assets string
+	// AssetReports is the prefix of the Asset Report Service, such as "/asset-reports": a tool posts
+	// the reports of one processor attached to one activity to the prefix plus "/{processor}" (see
+	// Config.AssetReportURL), the report_url of the assetreport claim. Empty when the platform offers
+	// none.
+	AssetReports string
+	// Eula is the prefix of each deployment's EULA service, such as "/eula": a deployment's service
+	// is at the prefix plus "/{deployment}" (see Config.EulaServiceURL), the url of the eulaservice
+	// claim, and the tool calls its "/user" and "/deployment" endpoints. Empty when the platform
+	// offers none.
+	Eula string
 }
 
 // Endpoints are the platform's absolute https URLs.
@@ -193,14 +207,89 @@ func (c Config) RegistrationClientURL(clientID string) (string, error) {
 	return strings.TrimSuffix(c.Issuer, "/") + c.Paths.RegistrationClient + "/" + url.PathEscape(clientID), nil
 }
 
-// scopesSupported returns the service scopes the platform offers: Scopes, plus
-// lti.ScopeRegistrationReadOnly and lti.ScopeRegistration when it serves the client configuration
-// endpoint, each once.
+// AssetURL returns where a tool downloads the asset with assetID, the URL of the asset in the
+// assetservice claim: the issuer plus Paths.Assets plus "/{asset}", with assetID path-escaped.
+// NewHandler serves it. It fails without Paths.Assets, and for an assetID that is empty, "." or
+// "..".
+func (c Config) AssetURL(assetID string) (string, error) {
+	if c.Paths.Assets == "" {
+		return "", errors.New("lti: config has no assets path")
+	}
+
+	if !isPathSegment(assetID) {
+		return "", errors.New(`lti: an asset url needs an asset id other than "", "." or ".."`)
+	}
+
+	return strings.TrimSuffix(c.Issuer, "/") + c.Paths.Assets + "/" + url.PathEscape(assetID), nil
+}
+
+// AssetReportURL returns where a tool posts the reports of the processor with processorID, the
+// report_url of the assetreport claim: the issuer plus Paths.AssetReports plus "/{processor}", with
+// processorID path-escaped. processorID is the platform's own id for one processor attached to one
+// activity, so that two attachments of a tool have different URLs. NewHandler serves it. It fails
+// without Paths.AssetReports, and for a processorID that is empty, "." or "..".
+func (c Config) AssetReportURL(processorID string) (string, error) {
+	if c.Paths.AssetReports == "" {
+		return "", errors.New("lti: config has no asset reports path")
+	}
+
+	if !isPathSegment(processorID) {
+		return "", errors.New(`lti: an asset report url needs a processor id other than "", "." or ".."`)
+	}
+
+	return strings.TrimSuffix(c.Issuer, "/") + c.Paths.AssetReports + "/" + url.PathEscape(processorID), nil
+}
+
+// EulaServiceURL returns the EULA service of the deployment with deploymentID, the url of the
+// eulaservice claim: the issuer plus Paths.Eula plus "/{deployment}", with deploymentID
+// path-escaped. NewHandler serves its "/user" and "/deployment" endpoints. It fails without
+// Paths.Eula, and for a deploymentID that is empty, "." or "..".
+func (c Config) EulaServiceURL(deploymentID string) (string, error) {
+	if c.Paths.Eula == "" {
+		return "", errors.New("lti: config has no eula path")
+	}
+
+	if !isPathSegment(deploymentID) {
+		return "", errors.New(`lti: a eula service url needs a deployment id other than "", "." or ".."`)
+	}
+
+	return strings.TrimSuffix(c.Issuer, "/") + c.Paths.Eula + "/" + url.PathEscape(deploymentID), nil
+}
+
+// EulaService returns the eulaservice claim of the deployment with deploymentID, the EulaService of
+// an lti.EulaRequest: the deployment's EulaServiceURL, with both EULA scopes. It fails as
+// EulaServiceURL does.
+func (c Config) EulaService(deploymentID string) (lti.EulaService, error) {
+	service, err := c.EulaServiceURL(deploymentID)
+	if err != nil {
+		return lti.EulaService{}, err
+	}
+
+	return lti.EulaService{URL: service, Scopes: []lti.Scope{lti.ScopeEulaUser, lti.ScopeEulaDeployment}}, nil
+}
+
+// scopesSupported returns the service scopes the platform offers: Scopes, plus the scopes of each
+// service whose path is set, each once: lti.ScopeRegistrationReadOnly and lti.ScopeRegistration for
+// the client configuration endpoint, lti.ScopeAssetReadOnly for the Asset Service, lti.ScopeReport
+// for the Asset Report Service, and lti.ScopeEulaUser and lti.ScopeEulaDeployment for the EULA
+// service.
 func (c Config) scopesSupported() []lti.Scope {
 	scopes := slices.Clone(c.Scopes)
 
-	if c.Paths.RegistrationClient != "" {
-		for _, scope := range []lti.Scope{lti.ScopeRegistrationReadOnly, lti.ScopeRegistration} {
+	for _, served := range []struct {
+		path   string
+		scopes []lti.Scope
+	}{
+		{c.Paths.RegistrationClient, []lti.Scope{lti.ScopeRegistrationReadOnly, lti.ScopeRegistration}},
+		{c.Paths.Assets, []lti.Scope{lti.ScopeAssetReadOnly}},
+		{c.Paths.AssetReports, []lti.Scope{lti.ScopeReport}},
+		{c.Paths.Eula, []lti.Scope{lti.ScopeEulaUser, lti.ScopeEulaDeployment}},
+	} {
+		if served.path == "" {
+			continue
+		}
+
+		for _, scope := range served.scopes {
 			if !slices.Contains(scopes, scope) {
 				scopes = append(scopes, scope)
 			}
@@ -264,9 +353,10 @@ func (c Config) Validate() error {
 
 // validate checks that each path starts with "/", is clean (no trailing slash, no "." or ".."
 // segments), has no query, fragment, braces or spaces, and differs from the others and from
-// PathOpenIDConfiguration. An empty ContextMemberships, ContextLineItems, NoticeHandlers or
-// RegistrationClient is left out. ContextMemberships and ContextLineItems may be the same, but no
-// two of the four prefixes may be one under the other, whose routes would overlap.
+// PathOpenIDConfiguration. An empty ContextMemberships, ContextLineItems, NoticeHandlers,
+// RegistrationClient, Assets, AssetReports or Eula is left out. ContextMemberships and
+// ContextLineItems may be the same, but no two of these prefixes may be one under the other, whose
+// routes would overlap.
 func (p Paths) validate() error {
 	seen := map[string]string{PathOpenIDConfiguration: "the openid configuration"}
 
@@ -282,6 +372,9 @@ func (p Paths) validate() error {
 		{"context line items", p.ContextLineItems, true},
 		{"notice handlers", p.NoticeHandlers, true},
 		{"registration client", p.RegistrationClient, true},
+		{"assets", p.Assets, true},
+		{"asset reports", p.AssetReports, true},
+		{"eula", p.Eula, true},
 	} {
 		if named.optional && named.path == "" {
 			continue
@@ -317,6 +410,15 @@ func (p Paths) validate() error {
 	for _, prefix := range []string{p.ContextMemberships, p.ContextLineItems, p.NoticeHandlers} {
 		if c := p.RegistrationClient; c != "" && prefix != "" && (strings.HasPrefix(c, prefix+"/") || strings.HasPrefix(prefix, c+"/")) {
 			return errors.New("lti: config registration client path must not be under another service's path, nor another service's path under it")
+		}
+	}
+
+	services := []string{p.ContextMemberships, p.ContextLineItems, p.NoticeHandlers, p.RegistrationClient, p.Assets, p.AssetReports, p.Eula}
+	for _, assetProcessor := range []string{p.Assets, p.AssetReports, p.Eula} {
+		for _, other := range services {
+			if assetProcessor != "" && other != "" && (strings.HasPrefix(assetProcessor, other+"/") || strings.HasPrefix(other, assetProcessor+"/")) {
+				return errors.New("lti: config asset processor service paths must not be under another service's path, nor another service's path under them")
+			}
 		}
 	}
 
