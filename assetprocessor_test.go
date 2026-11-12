@@ -223,11 +223,10 @@ func TestReport_UnmarshalJSON_IsLenient(t *testing.T) {
 			want: func(*lti.Report) {},
 		},
 		{
-			name: "a long result, and a color without an alt",
-			body: `{` + base + `, "timestamp": "2026-11-10T12:00:00.000001Z", "processingProgress": "Processed", "result": "seventeen chars!!", "indicationColor": "#ff0000"}`,
+			name: "a long result",
+			body: `{` + base + `, "timestamp": "2026-11-10T12:00:00.000001Z", "processingProgress": "Processed", "result": "seventeen chars!!"}`,
 			want: func(r *lti.Report) {
 				r.Result = "seventeen chars!!"
-				r.IndicationColor = "#ff0000"
 			},
 		},
 		{
@@ -293,9 +292,10 @@ func TestReport_UnmarshalJSON_RefusesWithAnInvalidRequest(t *testing.T) {
 
 	for body, description := range map[string]string{
 		`"report"`: "the report is not a JSON object",
-		`{"assetId": "asset-1", "type": "t", "timestamp": "2026-11-10T12:00:00Z", "processingProgress": "Processed"}`:                 "the report's priority is missing",
-		`{"assetId": "asset-1", "type": "t", "timestamp": "2026-11-10T12:00:00Z", "priority": -1, "processingProgress": "Processed"}`: "the report's priority must be an integer from 0 to 5",
-		`{"assetId": "asset-1", "type": "t", "priority": 0, "processingProgress": "Processed"}`:                                       "the report's timestamp is missing",
+		`{"assetId": "asset-1", "type": "t", "timestamp": "2026-11-10T12:00:00Z", "processingProgress": "Processed"}`:                                              "the report's priority is missing",
+		`{"assetId": "asset-1", "type": "t", "timestamp": "2026-11-10T12:00:00Z", "priority": -1, "processingProgress": "Processed"}`:                              "the report's priority must be an integer from 0 to 5",
+		`{"assetId": "asset-1", "type": "t", "priority": 0, "processingProgress": "Processed"}`:                                                                    "the report's timestamp is missing",
+		`{"assetId": "asset-1", "type": "t", "timestamp": "2026-11-10T12:00:00Z", "priority": 0, "processingProgress": "Processed", "indicationColor": "#ff0000"}`: "the report's indicationAlt is missing",
 	} {
 		var report lti.Report
 

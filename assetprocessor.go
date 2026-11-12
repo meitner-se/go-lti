@@ -269,11 +269,11 @@ func (*EulaRequest) isMessage() {}
 //
 // Decoding is lenient, so that a tool's report isn't turned away for what the platform can still
 // show: an unknown processingProgress is read as ProcessingProgressNotReady, an errorCode may be the
-// tool's own, result has no length limit, an indicationColor is kept without an indicationAlt, and
-// a timestamp may have any precision, and no time zone, which is read as UTC. Every other member is
-// kept in Extensions. Decoding fails, with an *Error with ErrorInvalidRequest, for anything but a
-// JSON object, a member of the wrong JSON type, and a report without an assetId, a type, a
-// timestamp, a priority from 0 to 5 or a processingProgress.
+// tool's own, result and indicationAlt have no length limit, and a timestamp may have any
+// precision, and no time zone, which is read as UTC. Every other member is kept in Extensions.
+// Decoding fails, with an *Error with ErrorInvalidRequest, for anything but a JSON object, a member
+// of the wrong JSON type, and a report without an assetId, a type, a timestamp, a priority from 0
+// to 5 or a processingProgress, or with an indicationColor but no indicationAlt.
 type Report struct {
 	// AssetID is the asset's id, an Asset.ID the platform sent the tool for the processor.
 	AssetID string
@@ -289,7 +289,8 @@ type Report struct {
 	// Comment is for people to read, such as why processing failed.
 	Comment string
 	// IndicationColor is a color, such as "#ff0000", for the platform to show without interpreting
-	// it. The spec requires IndicationAlt with it, at most 255 characters, to describe it in words.
+	// it. IndicationAlt, which a report with a color always has, says what the color means, for
+	// screen readers and tooltips. The spec asks a tool to keep it to 255 characters.
 	IndicationColor string
 	IndicationAlt   string
 	// Priority is from 0, nothing notable, through 1, notable, and 3, somewhat urgent or a warning,
@@ -384,6 +385,8 @@ func (rep *Report) UnmarshalJSON(data []byte) error {
 	o.decode("comment", &v.Comment)
 	o.decode("indicationColor", &v.IndicationColor)
 	o.decode("indicationAlt", &v.IndicationAlt)
+	// A color whose meaning can't be read out is no indication for everyone.
+	o.require("indicationAlt", v.IndicationColor == "" || v.IndicationAlt != "")
 	o.decode("visibleToOwner", &v.VisibleToOwner)
 	o.decode("errorCode", &v.ErrorCode)
 
