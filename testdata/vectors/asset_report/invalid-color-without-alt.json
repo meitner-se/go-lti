@@ -1,5 +1,5 @@
 {
-  "description": "An indicationColor without an indicationAlt is kept.",
+  "description": "An indicationColor needs its indicationAlt.",
   "scopes": [
     "https://purl.imsglobal.org/spec/lti/scope/report"
   ],
@@ -12,13 +12,7 @@
     "processingProgress": "Processed",
     "indicationColor": "#c62828"
   },
-  "expect_status": 200,
-  "expect_report": {
-    "assetId": "asset-1",
-    "type": "originality",
-    "timestamp": "2026-11-10T12:00:00.123456Z",
-    "priority": 1,
-    "processingProgress": "Processed",
-    "indicationColor": "#c62828"
-  }
+  "expect_status": 400,
+  "error_code": "invalid_request",
+  "error_description": "the report's indicationAlt is missing"
 }

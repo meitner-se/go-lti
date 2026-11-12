@@ -190,9 +190,9 @@ timestamp to the microsecond. A refusal has the OAuth 2.0 `error_code` and, for 
 The service needs the `report` scope. A report needs `assetId`, `type`, `timestamp`, a `priority`
 from 0 to 5 and `processingProgress`, and each member must have its JSON type. Reading is
 otherwise lenient: an unknown `processingProgress` is `NotReady`, an `errorCode` may be the tool's
-own, `result` and `indicationAlt` aren't cut, an `indicationColor` is kept without an
-`indicationAlt`, a `timestamp` may have any precision, a basic offset or no time zone (UTC), and a
-`priority` may be a whole float. Every other member, such as one named after the tool's domain, is
+own, `result` and `indicationAlt` aren't cut, a `timestamp` may have any precision, a basic offset
+or no time zone (UTC), and a `priority` may be a whole float. An `indicationColor` needs its
+`indicationAlt`. Every other member, such as one named after the tool's domain, is
 kept as it is.
 
 ## `eula_service/`
