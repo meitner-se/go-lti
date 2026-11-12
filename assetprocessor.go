@@ -333,13 +333,13 @@ func (rep Report) MarshalJSON() ([]byte, error) {
 		layout = time.RFC3339Nano
 	}
 
-	known, err := json.Marshal(report{
+	known, _ := json.Marshal(report{ //nolint:errcheck // errchkjson: strings, an int and a bool always encode
 		AssetID: rep.AssetID, Type: rep.Type, Timestamp: rep.Timestamp.Format(layout), Title: rep.Title, Result: rep.Result,
 		Comment: rep.Comment, IndicationColor: rep.IndicationColor, IndicationAlt: rep.IndicationAlt, Priority: rep.Priority,
 		VisibleToOwner: rep.VisibleToOwner, ProcessingProgress: rep.ProcessingProgress, ErrorCode: rep.ErrorCode,
 	})
-	if err != nil || len(rep.Extensions) == 0 {
-		return known, err
+	if len(rep.Extensions) == 0 {
+		return known, nil
 	}
 
 	var members map[string]json.RawMessage

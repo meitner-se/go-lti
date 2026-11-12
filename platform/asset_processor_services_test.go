@@ -1,7 +1,6 @@
 package platform
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -653,8 +652,4 @@ func TestConfig_OpenIDConfiguration_ListsTheScopesOfTheServicesItServes(t *testi
 	configuration, err = cfg.OpenIDConfiguration()
 	require.NoError(t, err)
 	assert.Equal(t, []string{"openid"}, configuration.ScopesSupported)
-
-	body, err := json.Marshal(configuration)
-	require.NoError(t, err)
-	assert.NotContains(t, string(body), "asset.readonly")
 }

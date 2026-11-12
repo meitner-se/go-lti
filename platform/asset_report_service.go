@@ -62,8 +62,8 @@ func (e *endpoints) postReport(w http.ResponseWriter, r *http.Request) {
 // objectRejection is the rejection of a body that failed to decode: the decoder's own, which names
 // the member at fault, or one for a body that isn't JSON at all.
 func objectRejection(what string, err error) error {
-	if _, ok := lti.AsError(err); ok {
-		return err
+	if rejection, ok := lti.AsError(err); ok {
+		return rejection
 	}
 
 	return lti.NewError(lti.ErrorInvalidRequest, "the "+what+" is not a JSON object", err)
